@@ -83,8 +83,17 @@ test("canvas drag, connections, undo, state editing and layout persist through s
   await expect(
     page.getByRole("checkbox", { name: "Technical help", exact: true }),
   ).toBeChecked();
-  await edge(page, "billing", "technical").focus();
-  await page.keyboard.press("Enter");
+  const linePoint = await edge(page, "billing", "technical")
+    .locator(".react-flow__edge-path")
+    .evaluate((el) => {
+      const path = el as SVGPathElement;
+      const point = path.getPointAtLength(path.getTotalLength() * 0.6);
+      const transformed = new DOMPoint(point.x, point.y).matrixTransform(
+        path.getScreenCTM()!,
+      );
+      return { x: transformed.x, y: transformed.y };
+    });
+  await page.mouse.click(linePoint.x, linePoint.y);
   await expect(page.locator(".p-edge-editor")).toContainText(
     "Billing help → Technical help",
   );
@@ -262,4 +271,22 @@ test("evaluation errors appear inside the dialog and keyboard focus stays in it"
   await expect(
     page.getByRole("button", { name: "Add case", exact: true }),
   ).toBeFocused();
+});
+
+test("a fresh template keeps its active conversation after its first layout save", async ({
+  page,
+}) => {
+  await createSupport(page);
+  await page.getByRole("button", { name: "Converse", exact: true }).click();
+  await page.getByLabel("Conversation message").fill("I was charged twice");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.locator(".p-current-state")).toContainText("Billing help");
+  await page.getByRole("button", { name: "Build", exact: true }).click();
+  await page.getByRole("button", { name: "Auto layout", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Save workflow", exact: true })
+    .click();
+  await expect(page.locator(".p-version")).toHaveText("v1");
+  await page.getByRole("button", { name: "Converse", exact: true }).click();
+  await expect(page.locator(".p-current-state")).toContainText("Billing help");
 });

@@ -45,6 +45,11 @@ export function CloudGate({
 }: {
   render: (cloud?: CloudWorkspace) => ReactNode;
 }) {
+  // The open-source distribution is a local browser workspace. The old cloud
+  // account flow remains below as migration reference, but is intentionally
+  // not reachable from the public product.
+  return render();
+  /* istanbul ignore next -- legacy hosted adapter
   const [authOptions, setAuthOptions] = useState({
     githubEnabled: false,
     emailSignupEnabled: false,
@@ -133,6 +138,7 @@ export function CloudGate({
       />
     );
   return render(workspace!);
+  */
 }
 function AccountAccess({
   recover,

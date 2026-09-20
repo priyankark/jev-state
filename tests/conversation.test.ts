@@ -176,10 +176,10 @@ test("live adapter passes full history to Jev and OpenAI, and keeps instructions
   assert.equal(requests[1]!.body.store, false);
   assert.match(String(requests[1]!.body.instructions), /Billing help/);
 });
-test("hosted API fails closed, authenticates with an HTTP-only cookie, and blocks foreign origins", async () => {
+test("public local API works without an account and blocks foreign origins", async () => {
   const oldToken = process.env.STUDIO_ACCESS_TOKEN,
     oldVercel = process.env.VERCEL;
-  process.env.STUDIO_ACCESS_TOKEN = "test-owner-secret";
+  delete process.env.STUDIO_ACCESS_TOKEN;
   process.env.VERCEL = "1";
   const app = express();
   app.use("/api/studio", createStudioApi());
@@ -188,36 +188,14 @@ test("hosted API fails closed, authenticates with an HTTP-only cookie, and block
   await once(server, "listening");
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/studio`;
   try {
-    assert.equal((await fetch(`${base}/connections`)).status, 401);
-    const login = await fetch(`${base}/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accessCode: "test-owner-secret" }),
-    });
-    assert.equal(login.status, 200);
-    const cookie = login.headers.get("set-cookie")!;
-    assert.match(cookie, /HttpOnly/);
-    assert.match(cookie, /Secure/);
-    assert.match(cookie, /SameSite=Strict/);
-    const header = cookie.split(";")[0]!;
-    assert.equal(
-      (await fetch(`${base}/connections`, { headers: { Cookie: header } }))
-        .status,
-      200,
-    );
+    assert.equal((await fetch(`${base}/connections`)).status, 200);
     assert.equal(
       (
         await fetch(`${base}/connections`, {
-          headers: { Cookie: header, Origin: "https://wrong.example" },
+          headers: { Origin: "https://wrong.example" },
         })
       ).status,
       403,
-    );
-    delete process.env.STUDIO_ACCESS_TOKEN;
-    assert.equal(
-      (await fetch(`${base}/connections`, { headers: { Cookie: header } }))
-        .status,
-      401,
     );
   } finally {
     if (oldToken === undefined) delete process.env.STUDIO_ACCESS_TOKEN;

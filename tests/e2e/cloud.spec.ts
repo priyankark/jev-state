@@ -66,6 +66,7 @@ test("cloud workspace persists across browser contexts, runs conversations and e
       .getByRole("button", { name: "Save workflow", exact: true })
       .click();
     const savedPosition = await startNode.getAttribute("style");
+    await expect(page.locator(".p-version")).toHaveText("v1");
     await expect(page.locator(".p-device")).toContainText("Saved to cloud");
     await page.getByRole("button", { name: "Converse", exact: true }).click();
     await page

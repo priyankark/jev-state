@@ -82,7 +82,15 @@ export function workflowSignature(project: Project): string {
   return JSON.stringify({
     name: project.name,
     initial: project.initial,
-    states: project.states.map(({ position: _position, ...state }) => state),
+    states: project.states.map((s) => ({
+      id: s.id,
+      label: s.label,
+      description: s.description,
+      reply: s.reply,
+      keywords: s.keywords,
+      transitions: s.transitions,
+      terminal: s.terminal,
+    })),
     instructions: project.instructions,
     threshold: project.threshold,
     agent: project.agent,

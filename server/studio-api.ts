@@ -7,8 +7,6 @@ import {
   evalCaseSchema,
 } from "../packages/core/src/studio.js";
 import { executeTurn, evaluateCase, serverConnectors } from "./conversation.js";
-import { cloudConfigured } from "./cloud.js";
-import { createCloudApi } from "./cloud-api.js";
 
 function token() {
   return process.env.STUDIO_ACCESS_TOKEN;
@@ -24,7 +22,7 @@ function equal(a: string, b: string) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 function authorized(req: express.Request) {
-  if (!process.env.VERCEL && !token()) return true;
+  if (!token()) return true;
   return (
     !!token() &&
     equal(
@@ -38,7 +36,9 @@ function authorized(req: express.Request) {
   );
 }
 export function createStudioApi() {
-  if (cloudConfigured()) return createCloudApi();
+  // The public distribution is deliberately local-first. Cloud adapters from
+  // the hosted experiment remain in the tree for migration reference, but are
+  // not part of the open-source runtime.
   const router = express.Router();
   router.use(express.json({ limit: "192kb" }));
   router.use((req, res, next) => {
