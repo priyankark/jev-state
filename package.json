@@ -1,0 +1,50 @@
+{
+  "name": "jev-state",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "check:env": "node --env-file-if-exists=.env.local --import tsx scripts/check-env.ts",
+    "smoke:jev": "node --env-file-if-exists=.env.local --import tsx scripts/smoke-jev.ts",
+    "dev": "node --env-file-if-exists=.env.local --import tsx server/index.ts",
+    "build": "npm run typecheck && vite build",
+    "start": "node --env-file-if-exists=.env.local --import tsx server/index.ts --production",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.116.0",
+    "@typesafe-ai/sdk": "0.6.0",
+    "@xyflow/react": "12.11.6",
+    "dodopayments": "2.51.0",
+    "express": "5.2.1",
+    "lucide-react": "1.47.0",
+    "openai": "7.20.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "tsx": "4.23.13",
+    "xstate": "5.33.2",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/express": "5.0.6",
+    "@types/node": "22.20.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "4.7.0",
+    "concurrently": "10.0.5",
+    "prettier": "3.9.8",
+    "typescript": "7.0.2",
+    "vite": "6.4.3"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "license": "MIT",
+  "description": "Open-source studio for Jev state machines, conversations and evaluations"
+}

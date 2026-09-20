@@ -1,0 +1,8 @@
+.git
+.env*
+.local
+.vercel
+node_modules
+dist
+.agents
+coverage

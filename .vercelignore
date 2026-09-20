@@ -1,0 +1,7 @@
+.env*
+.local
+.git
+node_modules
+dist
+tests
+.agents
