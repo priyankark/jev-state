@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "createdAt": "",
+  "threshold": 0.75,
+  "agent": {
+    "enabled": false,
+    "model": "gpt-4.1-mini",
+    "instructions": "Be concise, helpful, and honest. Never claim to have performed an external action. Ask one useful follow-up question when information is missing."
+  },
+  "id": "example-intake",
+  "name": "Lead qualification",
+  "description": "Collect intent and send qualified prospects to the right next step.",
+  "instructions": "Qualify interest without inventing details. A request for a demo goes to booking, a request for pricing goes to pricing, and an explicit decision to stop closes the conversation.",
+  "initial": "discover",
+  "states": [
+    {
+      "id": "discover",
+      "label": "Discover needs",
+      "description": "Learn what the person is looking for.",
+      "reply": "What are you hoping to build?",
+      "transitions": [
+        "pricing",
+        "booking",
+        "closed"
+      ],
+      "keywords": [],
+      "terminal": false
+    },
+    {
+      "id": "pricing",
+      "label": "Discuss pricing",
+      "description": "The user asks about pricing, costs, plans, or budgets.",
+      "reply": "What team size and usage do you have in mind?",
+      "transitions": [
+        "booking",
+        "closed"
+      ],
+      "keywords": [
+        "price",
+        "pricing",
+        "cost",
+        "budget"
+      ],
+      "terminal": false
+    },
+    {
+      "id": "booking",
+      "label": "Demo requested",
+      "description": "The user explicitly wants a demo or meeting.",
+      "reply": "I can help prepare a demo request. What would you like the demo to focus on?",
+      "transitions": [],
+      "keywords": [
+        "demo",
+        "meeting",
+        "schedule"
+      ],
+      "terminal": true
+    },
+    {
+      "id": "closed",
+      "label": "Closed",
+      "description": "The user says they are not interested or wants to stop.",
+      "reply": "No problem. You can pick this up any time.",
+      "transitions": [],
+      "keywords": [
+        "not interested",
+        "stop",
+        "no thanks"
+      ],
+      "terminal": true
+    }
+  ],
+  "cases": [
+    {
+      "id": "demo",
+      "name": "Pricing → demo",
+      "turns": [
+        "What does pricing look like?",
+        "I would like a demo"
+      ],
+      "expectedState": "booking",
+      "responseIncludes": ""
+    }
+  ]
+}

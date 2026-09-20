@@ -128,6 +128,7 @@ export function ProjectGraph({
   const editable = !!onPositions;
   const [expanded, setExpanded] = useState(false);
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
+  const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
   const [instance, setInstance] = useState<ReactFlowInstance<StateNode> | null>(
     null,
   );
@@ -159,6 +160,8 @@ export function ProjectGraph({
     s.transitions.map((to) => {
       const id = `${s.id}->${to}`;
       const active = transition?.from === s.id && transition.to === to;
+      const emphasized = active || selectedEdge === id || hoveredEdge === id;
+      const label = `${s.label} → ${project.states.find((t) => t.id === to)?.label ?? to}`;
       return {
         id,
         source: s.id,
@@ -168,13 +171,17 @@ export function ProjectGraph({
         ariaLabel: `${s.label} to ${project.states.find((t) => t.id === to)?.label ?? to}`,
         animated: active,
         interactionWidth: 24,
+        label: selectedEdge === id || hoveredEdge === id ? label : undefined,
+        labelStyle: { fontSize: 11, fill: "#25432f", fontWeight: 600 },
+        labelBgStyle: { fill: "#fff", fillOpacity: 0.96 },
+        zIndex: emphasized ? 10 : 0,
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: active || selectedEdge === id ? "#315640" : "#8c9e8c",
+          color: emphasized ? "#315640" : "#8c9e8c",
         },
         style: {
-          stroke: active || selectedEdge === id ? "#315640" : "#8c9e8c",
-          strokeWidth: active || selectedEdge === id ? 2.5 : 1.6,
+          stroke: emphasized ? "#315640" : "#8c9e8c",
+          strokeWidth: emphasized ? 2.5 : 1.6,
         },
       };
     }),
@@ -273,6 +280,8 @@ export function ProjectGraph({
           );
         }}
         onEdgeClick={(_, edge) => setSelectedEdge(edge.id)}
+        onEdgeMouseEnter={(_, edge) => setHoveredEdge(edge.id)}
+        onEdgeMouseLeave={() => setHoveredEdge(null)}
         onPaneClick={() => setSelectedEdge(null)}
         onConnect={(c) => {
           if (c.source && c.target) onConnect?.(c.source, c.target);

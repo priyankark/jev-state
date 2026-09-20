@@ -11,7 +11,13 @@ export default defineConfig({
   reporter: "list",
   webServer: {
     command: "npm run dev",
-    env: { PORT: "5174", STUDIO_MODE: "local", STUDIO_ACCESS_TOKEN: "" },
+    env: {
+      PORT: "5174",
+      STUDIO_PUBLIC_DEMO: "1",
+      STUDIO_ACCESS_TOKEN: "",
+      TYPESAFE_API_KEY: "",
+      OPENAI_API_KEY: "",
+    },
     url: "http://localhost:5174",
     reuseExistingServer: !process.env.CI,
   },

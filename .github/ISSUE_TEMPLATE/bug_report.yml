@@ -1,0 +1,24 @@
+name: Bug report
+description: Report a reproducible problem with editing, conversations, or evaluations.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the expected and actual behavior. Do not include keys or private transcripts.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include a sanitized project JSON or a minimal example when possible.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: Browser, OS, Node version, commit, local or hosted, simulation or live
+    validations:
+      required: true

@@ -10,7 +10,8 @@ import { supportMachine } from "../examples/support-routing/machine.js";
 import { createMockProvider } from "./mock.js";
 import { createJevProvider } from "@jev-state/typesafe";
 import { createTypeSafeClient } from "./typesafe.js";
-import { createStudioApi } from "./studio-api.js";
+import { createStudioApi, authorized } from "./studio-api.js";
+import { liveEnabled } from "./access.js";
 
 export function createApp(options: {
   port: number;
@@ -44,15 +45,19 @@ export function createApp(options: {
       return;
     }
     res.setHeader("Cache-Control", "no-store");
+    if (!authorized(req)) {
+      res.status(401).json({ error: "Unlock this workspace to continue." });
+      return;
+    }
     next();
   });
   app.use(express.json({ limit: "32kb" }));
   app.get("/api/config", (_req, res) =>
     res.json({
       manifest: supportMachine.manifest,
-      liveAvailable: !!(
-        options.liveProvider || process.env.TYPESAFE_API_KEY?.trim()
-      ),
+      liveAvailable:
+        liveEnabled() &&
+        !!(options.liveProvider || process.env.TYPESAFE_API_KEY?.trim()),
     }),
   );
   app.post("/api/runs", (req, res) => {
@@ -62,6 +67,12 @@ export function createApp(options: {
         error:
           "Enter a message (1–8000 characters), a valid mode, and a threshold from 0 to 1.",
       });
+      return;
+    }
+    if (input.data.mode === "live" && !liveEnabled()) {
+      res
+        .status(403)
+        .json({ error: "Live providers are disabled on this installation." });
       return;
     }
     for (const [id, run] of runs)

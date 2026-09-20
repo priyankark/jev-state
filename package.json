@@ -1,6 +1,6 @@
 {
   "name": "jev-state",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -14,13 +14,13 @@
     "build": "npm run typecheck && vite build",
     "start": "node --env-file-if-exists=.env.local --import tsx server/index.ts --production",
     "test": "node --import tsx --test tests/*.test.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "evaluate": "node --env-file-if-exists=.env.local --import tsx scripts/evaluate.ts",
+    "example": "node --import tsx examples/support-routing/run.ts"
   },
   "dependencies": {
-    "@supabase/supabase-js": "2.116.0",
     "@typesafe-ai/sdk": "0.6.0",
     "@xyflow/react": "12.11.6",
-    "dodopayments": "2.51.0",
     "express": "5.2.1",
     "lucide-react": "1.47.0",
     "openai": "7.20.0",
@@ -46,5 +46,5 @@
     "packages/*"
   ],
   "license": "MIT",
-  "description": "Open-source studio for Jev state machines, conversations and evaluations"
+  "description": "Visual studio for Jev state machines: build workflows, inspect conversations, and run evaluations."
 }

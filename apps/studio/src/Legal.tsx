@@ -33,11 +33,13 @@ export function LegalPage() {
             </p>
             <h2>Model providers</h2>
             <p>
-              Simulation stays local. When you choose Live Jev, the workflow and
-              conversation are sent to TypeSafe. When you enable generated
-              replies, the conversation and agent instructions are sent to
-              OpenAI. Provider terms and retention policies apply to those
-              requests.
+              Simulation sends the workflow and conversation to this
+              installation's server, without calling a model provider. On the
+              public demo, this means the hosting provider processes these
+              requests. When you choose Live Jev, the workflow and conversation
+              are sent to TypeSafe. When you enable generated replies, the
+              conversation and agent instructions are sent to OpenAI. Provider
+              terms and retention policies apply to those requests.
             </p>
             <h2>Credentials</h2>
             <p>

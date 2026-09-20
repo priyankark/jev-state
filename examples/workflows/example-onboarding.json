@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "createdAt": "",
+  "threshold": 0.75,
+  "agent": {
+    "enabled": false,
+    "model": "gpt-4.1-mini",
+    "instructions": "Be concise, helpful, and honest. Never claim to have performed an external action. Ask one useful follow-up question when information is missing."
+  },
+  "id": "example-onboarding",
+  "name": "Product onboarding",
+  "description": "Guide someone from their first question to a completed setup.",
+  "instructions": "Help someone set up a new product. Move forward only after they confirm the prerequisite step. Keep the workflow in order.",
+  "initial": "welcome",
+  "states": [
+    {
+      "id": "welcome",
+      "label": "Welcome",
+      "description": "Ask whether the person is ready to begin.",
+      "reply": "Welcome! Ready to set up your workspace?",
+      "transitions": [
+        "setup"
+      ],
+      "keywords": [],
+      "terminal": false
+    },
+    {
+      "id": "setup",
+      "label": "Set up workspace",
+      "description": "The user says they want to get started or begin setup.",
+      "reply": "First, create your workspace. Let me know when that’s done.",
+      "transitions": [
+        "invite"
+      ],
+      "keywords": [
+        "start",
+        "ready",
+        "begin",
+        "yes"
+      ],
+      "terminal": false
+    },
+    {
+      "id": "invite",
+      "label": "Invite teammates",
+      "description": "The user confirms their workspace is created.",
+      "reply": "Great. Invite a teammate, then tell me when the invitation is sent.",
+      "transitions": [
+        "done"
+      ],
+      "keywords": [
+        "created",
+        "workspace is done",
+        "finished"
+      ],
+      "terminal": false
+    },
+    {
+      "id": "done",
+      "label": "All set",
+      "description": "The user confirms their teammate invitation was sent.",
+      "reply": "You’re all set. Your workspace is ready to explore.",
+      "transitions": [],
+      "keywords": [
+        "invited",
+        "invitation sent",
+        "sent"
+      ],
+      "terminal": true
+    }
+  ],
+  "cases": [
+    {
+      "id": "onboard",
+      "name": "Complete onboarding",
+      "turns": [
+        "I am ready to start",
+        "Workspace created",
+        "Invitation sent"
+      ],
+      "expectedState": "done",
+      "responseIncludes": "all set"
+    }
+  ]
+}

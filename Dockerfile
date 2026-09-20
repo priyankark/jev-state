@@ -5,7 +5,7 @@ RUN npm ci && npm run build
 
 FROM node:22-alpine
 WORKDIR /app
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=5173 STUDIO_MODE=local
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=5173
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/packages ./packages
 RUN npm ci --omit=dev

@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "createdAt": "",
+  "threshold": 0.75,
+  "agent": {
+    "enabled": false,
+    "model": "gpt-4.1-mini",
+    "instructions": "Be concise, helpful, and honest. Never claim to have performed an external action. Ask one useful follow-up question when information is missing."
+  },
+  "id": "example-support",
+  "name": "Support conversation",
+  "description": "Route an issue, work through it, and confirm resolution across multiple turns.",
+  "instructions": "Help the customer reach the appropriate support state. Use the full conversation to interpret short follow-ups. Only mark resolved when the customer explicitly confirms the issue is resolved. Do not claim to issue refunds or change accounts.",
+  "initial": "welcome",
+  "states": [
+    {
+      "id": "welcome",
+      "label": "Welcome",
+      "description": "Identify what the customer needs.",
+      "reply": "Hi! What can I help you with today?",
+      "transitions": [
+        "billing",
+        "technical",
+        "review"
+      ],
+      "keywords": [],
+      "terminal": false
+    },
+    {
+      "id": "billing",
+      "label": "Billing help",
+      "description": "The conversation is about charges, subscriptions, payments, or refunds.",
+      "reply": "I can help you work through the billing issue. Which charge or subscription is affected?",
+      "transitions": [
+        "resolved",
+        "review"
+      ],
+      "keywords": [
+        "charge",
+        "charged",
+        "refund",
+        "payment",
+        "subscription"
+      ],
+      "terminal": false
+    },
+    {
+      "id": "technical",
+      "label": "Technical help",
+      "description": "The conversation concerns a bug, login failure, crash, or broken feature.",
+      "reply": "Let’s troubleshoot. What happens when you try, and do you see an error?",
+      "transitions": [
+        "resolved",
+        "review"
+      ],
+      "keywords": [
+        "crash",
+        "login",
+        "error",
+        "bug",
+        "broken"
+      ],
+      "terminal": false
+    },
+    {
+      "id": "review",
+      "label": "Human handoff",
+      "description": "The customer asks for a human or the request falls outside billing and technical support.",
+      "reply": "This needs a human to take a closer look. I can summarize the details for them.",
+      "transitions": [],
+      "keywords": [
+        "human",
+        "person",
+        "agent",
+        "something else"
+      ],
+      "terminal": true
+    },
+    {
+      "id": "resolved",
+      "label": "Resolved",
+      "description": "The customer explicitly confirms that the problem is fixed or resolved.",
+      "reply": "Glad that’s resolved. Thanks for checking back in!",
+      "transitions": [],
+      "keywords": [
+        "fixed",
+        "resolved",
+        "working now",
+        "sorted"
+      ],
+      "terminal": true
+    }
+  ],
+  "cases": [
+    {
+      "id": "billing-resolution",
+      "name": "Billing → resolved",
+      "turns": [
+        "I was charged twice for my subscription.",
+        "It is fixed now, thank you."
+      ],
+      "expectedState": "resolved",
+      "responseIncludes": ""
+    },
+    {
+      "id": "technical",
+      "name": "Technical issue",
+      "turns": [
+        "I get an error every time I log in."
+      ],
+      "expectedState": "technical",
+      "responseIncludes": ""
+    },
+    {
+      "id": "handoff",
+      "name": "Human requested",
+      "turns": [
+        "I would like to speak with a human."
+      ],
+      "expectedState": "review",
+      "responseIncludes": ""
+    }
+  ]
+}

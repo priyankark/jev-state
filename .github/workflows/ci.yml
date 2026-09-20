@@ -14,5 +14,21 @@ jobs:
       - run: npm test
       - run: npx playwright install --with-deps chrome
       - run: npm run test:e2e
-        env:
-          STUDIO_MODE: local
+      - run: npm run evaluate -- --project examples/workflows/example-support.json --out .local/ci-evaluation.json
+      - name: Build and smoke-test the production container
+        run: |
+          docker build -t jev-state:ci .
+          docker run -d --name jev-state-ci -p 127.0.0.1:5175:5173 -e STUDIO_PUBLIC_DEMO=1 jev-state:ci
+          trap 'docker logs jev-state-ci; docker rm -f jev-state-ci' EXIT
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://localhost:5175/api/studio/connections; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://localhost:5175/ > /dev/null
+          curl --fail --silent http://localhost:5175/api/studio/connections | node -e 'let data=""; process.stdin.on("data", d => data += d); process.stdin.on("end", () => { const c=JSON.parse(data); if(c.jev || c.openai || c.liveEnabled) process.exit(1); });'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failure-artifacts
+          path: .local/test-results
+          include-hidden-files: true

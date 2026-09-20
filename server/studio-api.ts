@@ -7,6 +7,7 @@ import {
   evalCaseSchema,
 } from "../packages/core/src/studio.js";
 import { executeTurn, evaluateCase, serverConnectors } from "./conversation.js";
+import { liveEnabled, liveDisabledMessage } from "./access.js";
 
 function token() {
   return process.env.STUDIO_ACCESS_TOKEN;
@@ -21,7 +22,7 @@ function equal(a: string, b: string) {
     y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
 }
-function authorized(req: express.Request) {
+export function authorized(req: express.Request) {
   if (!token()) return true;
   return (
     !!token() &&
@@ -36,16 +37,15 @@ function authorized(req: express.Request) {
   );
 }
 export function createStudioApi() {
-  // The public distribution is deliberately local-first. Cloud adapters from
-  // the hosted experiment remain in the tree for migration reference, but are
-  // not part of the open-source runtime.
   const router = express.Router();
   router.use(express.json({ limit: "192kb" }));
   router.use((req, res, next) => {
     res.set("Cache-Control", "no-store");
     if (
       !process.env.VERCEL &&
-      !/^(localhost|127\.0\.0\.1):\d+$/.test(req.headers.host || "")
+      !/^(localhost|127\.0\.0\.1):\d+$/.test(req.headers.host || "") &&
+      (!process.env.STUDIO_ORIGIN ||
+        new URL(process.env.STUDIO_ORIGIN).host !== req.headers.host)
     ) {
       res.status(403).json({ error: "Use the local workspace address." });
       return;
@@ -54,7 +54,10 @@ export function createStudioApi() {
     if (origin) {
       try {
         const url = new URL(origin);
-        if (url.host !== req.headers.host) {
+        if (
+          url.host !== req.headers.host ||
+          (process.env.STUDIO_ORIGIN && origin !== process.env.STUDIO_ORIGIN)
+        ) {
           res.status(403).json({ error: "Use the same workspace origin." });
           return;
         }
@@ -79,7 +82,9 @@ export function createStudioApi() {
     }
     res.cookie("jev_session", sessionValue(), {
       httpOnly: true,
-      secure: !!process.env.VERCEL,
+      secure:
+        !!process.env.VERCEL ||
+        process.env.STUDIO_ORIGIN?.startsWith("https://") === true,
       sameSite: "strict",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
@@ -99,12 +104,17 @@ export function createStudioApi() {
   });
   router.get("/connections", (_req, res) =>
     res.json({
-      jev: !!process.env.TYPESAFE_API_KEY,
-      openai: !!process.env.OPENAI_API_KEY,
+      jev: liveEnabled() && !!process.env.TYPESAFE_API_KEY?.trim(),
+      openai: liveEnabled() && !!process.env.OPENAI_API_KEY?.trim(),
+      liveEnabled: liveEnabled(),
       model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
     }),
   );
   router.post("/connections/test", async (req, res) => {
+    if (!liveEnabled()) {
+      res.status(403).json({ error: liveDisabledMessage });
+      return;
+    }
     try {
       const connectors = serverConnectors();
       if (req.body?.provider === "jev") {
@@ -131,6 +141,10 @@ export function createStudioApi() {
       res.status(400).json({
         error: parsed.error.issues[0]?.message || "Invalid conversation",
       });
+      return;
+    }
+    if (parsed.data.mode === "live" && !liveEnabled()) {
+      res.status(403).json({ error: liveDisabledMessage });
       return;
     }
     const controller = new AbortController();
@@ -160,6 +174,20 @@ export function createStudioApi() {
       res.status(400).json({
         error: parsed.error.issues[0]?.message || "Invalid evaluation case",
       });
+      return;
+    }
+    if (
+      !parsed.data.project.states.some(
+        (state) => state.id === parsed.data.test.expectedState,
+      )
+    ) {
+      res
+        .status(400)
+        .json({ error: "The expected state does not exist in this workflow." });
+      return;
+    }
+    if (parsed.data.mode === "live" && !liveEnabled()) {
+      res.status(403).json({ error: liveDisabledMessage });
       return;
     }
     const controller = new AbortController();

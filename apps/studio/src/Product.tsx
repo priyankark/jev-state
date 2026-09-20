@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { ProjectGraph, layoutStates } from "./ProjectGraph.js";
 import {
+  diagnoseProject,
+  evaluationCoverage,
+} from "../../../packages/core/src/diagnostics.js";
+import { workspaceSchema } from "../../../packages/core/src/workspace.js";
+import {
   Activity,
   Undo2,
   Redo2,
@@ -54,15 +59,12 @@ import {
   type WorkflowState,
 } from "../../../packages/core/src/studio.js";
 import "./product.css";
-import {
-  CloudGate,
-  BillingPage,
-  useCloudSync,
-  type CloudWorkspace,
-} from "./Cloud.js";
-import { authHeaders, cloudRequest } from "./cloud-client.js";
-
-type ConnectionState = { jev: boolean; openai: boolean; model: string };
+type ConnectionState = {
+  jev: boolean;
+  openai: boolean;
+  model: string;
+  liveEnabled?: boolean;
+};
 type Library = {
   projects: Project[];
   conversations: Conversation[];
@@ -70,19 +72,13 @@ type Library = {
 };
 const KEY = "jev-state-workspace-v2";
 const fresh: Library = { projects: [], conversations: [], reports: [] };
-function load(): Library {
+function load(): { library: Library; damaged: boolean } {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || "null");
-    if (!raw) return fresh;
-    return {
-      projects: (raw.projects || []).filter(
-        (p: unknown) => projectSchema.safeParse(p).success,
-      ),
-      conversations: Array.isArray(raw.conversations) ? raw.conversations : [],
-      reports: Array.isArray(raw.reports) ? raw.reports : [],
-    };
+    if (!raw) return { library: fresh, damaged: false };
+    return { library: workspaceSchema.parse(raw) as Library, damaged: false };
   } catch {
-    return fresh;
+    return { library: fresh, damaged: true };
   }
 }
 async function request<T>(
@@ -98,7 +94,7 @@ async function request<T>(
 
           body: JSON.stringify(body),
         }),
-    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+    headers: { "Content-Type": "application/json" },
     ...(signal ? { signal } : {}),
   });
   const data = await response.json();
@@ -122,32 +118,21 @@ function percent(n: number) {
   return `${Math.round(n * 100)}%`;
 }
 export function Product() {
-  return (
-    <CloudGate
-      render={(cloud) => (
-        <WorkspaceProduct key={cloud?.user.id || "local"} cloud={cloud} />
-      )}
-    />
-  );
-}
-function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
-  const [library, setLibrary] = useState<Library>(
-    () => cloud?.library ?? load(),
-  );
-  const sync = useCloudSync(cloud, library);
-  const [providerKey, setProviderKey] = useState("");
-  const [keyBusy, setKeyBusy] = useState(false);
-  const [projectLimit, setProjectLimit] = useState(
-    cloud?.projectLimit ?? Infinity,
-  );
-  const [page, setPage] = useState<"projects" | "connections" | "billing">(
-    "projects",
-  );
+  const [loaded] = useState(load);
+  const [damagedStorage, setDamagedStorage] = useState(loaded.damaged);
+  const [library, setLibrary] = useState<Library>(loaded.library);
+  const [storageBlocked, setStorageBlocked] = useState(loaded.damaged);
+  const [storageError, setStorageError] = useState(false);
+  const storageStatus =
+    storageError || storageBlocked
+      ? "Changes are not saved"
+      : "Saved on this device";
+  const [page, setPage] = useState<"projects" | "connections">("projects");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [tab, setTab] = useState<"build" | "conversation" | "evals">(
     "conversation",
   );
-  const [session, setSession] = useState<boolean | null>(cloud ? true : null),
+  const [session, setSession] = useState<boolean | null>(null),
     [accessCode, setAccessCode] = useState(""),
     [connections, setConnections] = useState<ConnectionState>({
       jev: false,
@@ -179,6 +164,7 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
   const [setupProvider, setSetupProvider] = useState<string | null>(null),
     [connectionTest, setConnectionTest] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement>(null),
+    restoreRef = useRef<HTMLInputElement>(null),
     controller = useRef<AbortController | null>(null),
     revision = useRef(0),
     chatEnd = useRef<HTMLDivElement>(null);
@@ -202,6 +188,7 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
   const viewedTurn =
     conversation?.turns[inspectedTurn ?? conversation.turns.length - 1];
   const working = draft ?? project;
+  const diagnostics = working ? diagnoseProject(working) : [];
   const dirty = !!(
     draft &&
     project &&
@@ -210,7 +197,6 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
   const selected =
     working?.states.find((s) => s.id === selectedState) ?? working?.states[0];
   useEffect(() => {
-    if (cloud) return;
     request<{ authenticated: boolean }>("/session")
       .then((r) => setSession(r.authenticated))
       .catch((e) => setError(e.message));
@@ -219,14 +205,24 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
     if (session) void refreshConnections();
   }, [session]);
   useEffect(() => {
+    if (storageBlocked) return;
     try {
-      if (!cloud) localStorage.setItem(KEY, JSON.stringify(library));
+      localStorage.setItem(KEY, JSON.stringify(library));
+      setStorageError(false);
     } catch {
+      setStorageError(true);
       setError(
         "Device storage is full. Export your work and remove older conversations. New changes are not saved.",
       );
     }
-  }, [library]);
+  }, [library, storageBlocked]);
+  useEffect(() => {
+    const changed = (event: StorageEvent) => {
+      if (event.key === KEY || event.key === null) setStorageBlocked(true);
+    };
+    window.addEventListener("storage", changed);
+    return () => window.removeEventListener("storage", changed);
+  }, []);
   useEffect(() => {
     if (tab !== "conversation") return;
     const messages = chatEnd.current?.parentElement;
@@ -272,7 +268,7 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
     setError("");
     setReportId(null);
   }
-  function navigate(next: "projects" | "connections" | "billing") {
+  function navigate(next: "projects" | "connections") {
     if (dirty && !window.confirm("Discard unsaved workflow changes?")) return;
     cancelWork();
     setPage(next);
@@ -281,15 +277,6 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
     setError("");
   }
   function makeProject() {
-    if (library.projects.length >= projectLimit) {
-      setError(
-        "Your plan includes " +
-          projectLimit +
-          " projects. Remove one or upgrade in Plan & account.",
-      );
-      setCreate(false);
-      return;
-    }
     const template = templates.find((t) => t.id === templateId);
     const p = template
       ? copyTemplate(template, projectName.trim() || template.name)
@@ -378,14 +365,14 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
   }
   useEffect(() => {
     const guard = (e: BeforeUnloadEvent) => {
-      if (dirty) {
+      if (dirty || storageError || storageBlocked) {
         e.preventDefault();
         e.returnValue = "";
       }
     };
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
-  }, [dirty]);
+  }, [dirty, storageError, storageBlocked]);
   useEffect(() => {
     const shortcuts = (e: KeyboardEvent) => {
       if (tab !== "build" || !project || (!e.metaKey && !e.ctrlKey)) return;
@@ -437,7 +424,6 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
         setCaseEditor(null);
         setDetail(null);
         setSetupProvider(null);
-        setProviderKey("");
         setError("");
       }
       if (e.key === "Tab") {
@@ -570,10 +556,6 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
       { role: "user", content: text.trim() },
     ];
     try {
-      if (!(await sync.flush()))
-        throw new Error(
-          "Save your project to the cloud before starting a run. Use Retry save above.",
-        );
       const result = await request<TurnResult>(
         "/turn",
         {
@@ -647,12 +629,6 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
   }
   async function runEvals() {
     if (!project || !project.cases.length) return;
-    if (!(await sync.flush())) {
-      setError(
-        "Save your project to the cloud before running evaluations. Use Retry save above.",
-      );
-      return;
-    }
     const runProject = structuredClone(project);
     const abort = new AbortController();
     controller.current = abort;
@@ -719,12 +695,6 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
     }
   }
   async function importProject(file: File) {
-    if (library.projects.length >= projectLimit) {
-      setError(
-        "Project limit reached. Remove a project or upgrade in Plan & account.",
-      );
-      return;
-    }
     try {
       if (file.size > 500000)
         throw new Error("Project files must be smaller than 500 KB.");
@@ -737,6 +707,37 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
     } catch {
       setError(
         "This is not a valid Jev State project file. Export a project from its workspace to get the right format.",
+      );
+    }
+  }
+  async function restoreWorkspace(file: File) {
+    try {
+      if (file.size > 10_000_000)
+        throw new Error("Backups must be smaller than 10 MB.");
+      const raw = JSON.parse(await file.text());
+      if (raw.schemaVersion !== 1)
+        throw new Error("Choose a Jev State workspace backup (version 1).");
+      const restored = workspaceSchema.parse(raw.workspace) as Library;
+      if (
+        !window.confirm(
+          "Replace this device's projects, conversations, and reports with this backup? Export your current workspace first if you need it.",
+        )
+      )
+        return;
+      cancelWork();
+      setProjectId(null);
+      setDraft(null);
+      setPage("projects");
+      setStorageBlocked(false);
+      setDamagedStorage(false);
+      setLibrary(restored);
+      setError("");
+      notify("Workspace restored.");
+    } catch (e) {
+      setError(
+        e instanceof Error && !("issues" in e)
+          ? e.message
+          : "This backup contains invalid projects or conversation history. Your workspace is unchanged.",
       );
     }
   }
@@ -838,7 +839,6 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
           <div>
             Personal workspace<small>Your ideas, in motion</small>
           </div>
-          <ChevronDown size={14} />
         </div>
         <div className="p-nav-label">WORKSPACE</div>
         <button
@@ -855,19 +855,6 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
           <Plug size={18} /> Connections{" "}
           <i className={connections.jev ? "p-dot" : ""} />
         </button>
-        {cloud && (
-          <button
-            className={`p-nav ${page === "billing" ? "active" : ""}`}
-            onClick={() => {
-              navigate("billing");
-              void cloudRequest<{ projectLimit: number }>("/billing").then(
-                (b) => setProjectLimit(b.projectLimit),
-              );
-            }}
-          >
-            <ShieldCheck size={18} /> Plan & account
-          </button>
-        )}
         {library.projects.length > 0 && (
           <>
             <div className="p-nav-label p-recents">RECENT PROJECTS</div>
@@ -876,8 +863,7 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
                 className={`p-recent ${project?.id === p.id ? "active" : ""}`}
                 key={p.id}
                 onClick={() => {
-                  if (!dirty || window.confirm("Discard unsaved changes?"))
-                    openProject(p);
+                  openProject(p);
                 }}
               >
                 <GitBranch size={14} />
@@ -887,6 +873,31 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
           </>
         )}
         <div className="p-sidebar-bottom">
+          <button
+            className="p-nav"
+            title="Back up workspace"
+            onClick={() => {
+              if (dirty) {
+                setError(
+                  "Save your workflow changes before backing up the workspace.",
+                );
+                return;
+              }
+              exportJson(
+                { schemaVersion: 1, workspace: library },
+                "jev-state-workspace.json",
+              );
+            }}
+          >
+            <Download size={16} /> Back up workspace
+          </button>
+          <button
+            className="p-nav"
+            title="Restore workspace"
+            onClick={() => restoreRef.current?.click()}
+          >
+            <Upload size={16} /> Restore workspace
+          </button>
           <div className="p-tip">
             <Sparkles size={18} />
             <strong>
@@ -901,15 +912,18 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
           <a href="https://docs.typesafe.ai" target="_blank" rel="noreferrer">
             <FileJson size={16} /> TypeSafe docs <ArrowUpRight size={13} />
           </a>
+          <a
+            href="https://github.com/priyankark/jev-state"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <GitBranch size={16} /> Source & guides <ArrowUpRight size={13} />
+          </a>
           <div className="p-device">
             <span className="p-dot" />
             <span>
-              {sync.status}
-              <small>
-                {cloud
-                  ? `${library.projects.length} of ${projectLimit} projects`
-                  : "Export projects to move or back up."}
-              </small>
+              <span role="status">{storageStatus}</span>
+              <small>Export projects to move or back up.</small>
             </span>
           </div>
         </div>
@@ -920,11 +934,7 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
             <span>Workspace</span>
             <ChevronRight size={14} />
             <button onClick={() => navigate(page)}>
-              {page === "connections"
-                ? "Connections"
-                : page === "billing"
-                  ? "Plan & account"
-                  : "Projects"}
+              {page === "connections" ? "Connections" : "Projects"}
             </button>
             {project && (
               <>
@@ -967,11 +977,73 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
               <i className="p-dot" />
               {connections.jev ? "Jev configured" : "Simulation ready"}
             </span>
-            <span className="p-avatar">
-              {cloud?.user.email?.[0]?.toUpperCase() || "P"}
-            </span>
+            <span className="p-avatar">P</span>
           </div>
         </header>
+        {storageBlocked && (
+          <div className="p-banner p-error" role="alert">
+            <span>
+              {damagedStorage
+                ? "Saved data could not be read. It has been preserved. Download it before resetting or restoring a backup."
+                : "This workspace changed in another tab. Saving is paused to prevent overwriting it. Back up your current work, then reload."}
+            </span>
+            <button
+              onClick={() => {
+                const raw = localStorage.getItem(KEY) ?? "null";
+                const url = URL.createObjectURL(
+                  new Blob([raw], { type: "application/json" }),
+                );
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = "jev-state-recovery.json";
+                link.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              Download saved data
+            </button>
+            {damagedStorage ? (
+              <button
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Reset saved workspace data? Download it first if you need a copy.",
+                    )
+                  ) {
+                    cancelWork();
+                    setLibrary({
+                      projects: [],
+                      conversations: [],
+                      reports: [],
+                    });
+                    setProjectId(null);
+                    setDraft(null);
+                    setStorageBlocked(false);
+                    setDamagedStorage(false);
+                  }
+                }}
+              >
+                Reset workspace
+              </button>
+            ) : (
+              <button onClick={() => location.reload()}>
+                Reload workspace
+              </button>
+            )}
+          </div>
+        )}
+        <input
+          ref={restoreRef}
+          type="file"
+          hidden
+          accept="application/json,.json"
+          aria-label="Restore workspace file"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void restoreWorkspace(file);
+            e.target.value = "";
+          }}
+        />
         {error && !modalKind && (
           <div className="p-banner p-error" role="alert">
             <span>{error}</span>
@@ -997,53 +1069,17 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
             e.target.value = "";
           }}
         />
-        {cloud && sync.recovery !== null && (
-          <div className="p-banner">
-            <span>
-              Unsynced work from an earlier session was recovered. Download a
-              backup before discarding it.
-            </span>
-            <button
-              onClick={() =>
-                exportJson(sync.recovery, "jev-state-recovered.json")
-              }
-            >
-              Download recovery
-            </button>
-            <button
-              onClick={() => {
-                if (
-                  window.confirm(
-                    "Discard the recovered backup? Your current cloud workspace is unchanged.",
-                  )
-                )
-                  sync.discardRecovery();
-              }}
-            >
-              Discard backup
-            </button>
-          </div>
-        )}
-        {cloud && sync.error && (
-          <div className="p-banner p-error" role="alert">
-            <span>{sync.error}</span>
-            <button
-              onClick={() => exportJson(library, "jev-state-unsynced.json")}
-            >
-              Export unsynced work
-            </button>
-            <button onClick={() => void sync.retry()}>Retry save</button>
-          </div>
-        )}
-        {page === "billing" && cloud ? (
-          <BillingPage
-            cloud={cloud}
-            library={library}
-            onError={setError}
-            onPlanUpdate={setProjectLimit}
-          />
-        ) : page === "connections" ? (
+        {page === "connections" ? (
           <div className="p-page">
+            {connections.liveEnabled === false && (
+              <div className="p-report-stale">
+                This is a simulation-only demo. To use live providers, run your
+                own copy locally or protect your deployment with an access code.{" "}
+                <a href="https://github.com/priyankark/jev-state#quickstart">
+                  Setup guide
+                </a>
+              </div>
+            )}
             <div className="p-page-heading">
               <div>
                 <span className="p-kicker">THE RIGHT TOOLS, CONNECTED</span>
@@ -1111,7 +1147,6 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
                     <button
                       className="p-button"
                       onClick={() => {
-                        setProviderKey("");
                         setSetupProvider(c.id);
                       }}
                     >
@@ -1126,9 +1161,9 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
               <div>
                 <h3>Your keys stay behind the scenes.</h3>
                 <p>
-                  {cloud
-                    ? "Your personal keys are encrypted on the server and used only for your account. They never appear in exports or browser storage. Model usage is billed by your provider."
-                    : "Connections use server environment variables. Keys are never included in project files, transcripts, browser storage, or evaluation reports."}
+                  Connections use server environment variables. Keys are never
+                  included in project files, transcripts, browser storage, or
+                  evaluation reports.
                 </p>
               </div>
             </div>
@@ -1388,11 +1423,7 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
               <div className="p-builder">
                 <div className="p-save-bar">
                   <span>
-                    {dirty
-                      ? "You have unsaved changes."
-                      : cloud
-                        ? sync.status
-                        : "Saved on this device"}
+                    {dirty ? "You have unsaved changes." : storageStatus}
                   </span>
                   <div>
                     <button
@@ -1419,6 +1450,31 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
                   </div>
                 </div>
                 <div className="p-builder-canvas">
+                  {diagnostics.length > 0 && (
+                    <details className="p-diagnostics">
+                      <summary>
+                        Workflow checks · {diagnostics.length}{" "}
+                        {diagnostics.length === 1
+                          ? "suggestion"
+                          : "suggestions"}
+                      </summary>
+                      <ul>
+                        {diagnostics.map((item, i) => (
+                          <li key={i}>
+                            {item.stateId ? (
+                              <button
+                                onClick={() => selectState(item.stateId!)}
+                              >
+                                {item.message}
+                              </button>
+                            ) : (
+                              item.message
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                   <div className="p-builder-bar">
                     <span>
                       <Workflow size={14} />
@@ -2299,6 +2355,34 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
                     the suite again to evaluate your current configuration.
                   </div>
                 )}
+                {report && !reportStale && (
+                  <div className="p-coverage" aria-label="Evaluation coverage">
+                    <strong>Path coverage</strong>
+                    <span>
+                      {
+                        evaluationCoverage(project, report.results).states
+                          .covered
+                      }
+                      /{project.states.length} states visited
+                    </span>
+                    <span>
+                      {
+                        evaluationCoverage(project, report.results).transitions
+                          .covered
+                      }
+                      /
+                      {
+                        evaluationCoverage(project, report.results).transitions
+                          .total
+                      }{" "}
+                      transitions taken
+                    </span>
+                    <small>
+                      Coverage records exercised paths; it does not measure
+                      model accuracy.
+                    </small>
+                  </div>
+                )}
                 <div className="p-eval-stats">
                   <div>
                     <span>PASS RATE</span>
@@ -2777,97 +2861,35 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
                 {error}
               </p>
             )}
-            {cloud ? (
-              <>
-                <p>
-                  Connect your own provider account. We verify and encrypt your
-                  key; it is only used for your workspace.
-                </p>
-                <label>
-                  API key
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    value={providerKey}
-                    onChange={(e) => setProviderKey(e.target.value)}
-                    placeholder="Paste your provider API key"
-                  />
-                </label>
-                <div className="p-actions">
-                  <button
-                    className="p-button p-primary"
-                    disabled={keyBusy || !providerKey.trim()}
-                    onClick={() => {
-                      setKeyBusy(true);
-                      void request("/connections/key", {
-                        provider: setupProvider,
-                        key: providerKey,
-                      })
-                        .then(() => {
-                          setProviderKey("");
-                          setSetupProvider(null);
-                          void refreshConnections();
-                          notify("Provider connected.");
-                        })
-                        .catch((e) => setError(e.message))
-                        .finally(() => setKeyBusy(false));
-                    }}
-                  >
-                    {keyBusy ? "Verifying…" : "Save connection"}
-                  </button>
-                  <button
-                    className="p-button"
-                    disabled={keyBusy}
-                    onClick={() => {
-                      setKeyBusy(true);
-                      void request("/connections/key", {
-                        provider: setupProvider,
-                        key: "",
-                      })
-                        .then(() => {
-                          setProviderKey("");
-                          setSetupProvider(null);
-                          void refreshConnections();
-                        })
-                        .catch((e) => setError(e.message))
-                        .finally(() => setKeyBusy(false));
-                    }}
-                  >
-                    Disconnect
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p>
-                  Add your provider key to the server environment, then redeploy
-                  or restart the server.
-                </p>
-                <label>
-                  Environment variable
-                  <code className="p-env-name">
-                    {setupProvider === "jev"
-                      ? "TYPESAFE_API_KEY"
-                      : "OPENAI_API_KEY"}
-                  </code>
-                </label>
-                <ol className="p-setup-steps">
-                  <li>Create an API key in your provider account.</li>
-                  <li>
-                    In Vercel, open this project’s{" "}
-                    <strong>Settings → Environment Variables</strong> and add
-                    the variable above.
-                  </li>
-                  <li>
-                    Redeploy, then use <strong>Test connection</strong> here.
-                  </li>
-                </ol>
-                <p className="p-field-hint">
-                  For local development, add it to the ignored .env.local file.
-                  Never put keys in workflow instructions or project JSON.
-                </p>
-              </>
-            )}
+            <>
+              <p>
+                Add your provider key to the server environment, then redeploy
+                or restart the server.
+              </p>
+              <label>
+                Environment variable
+                <code className="p-env-name">
+                  {setupProvider === "jev"
+                    ? "TYPESAFE_API_KEY"
+                    : "OPENAI_API_KEY"}
+                </code>
+              </label>
+              <ol className="p-setup-steps">
+                <li>Create an API key in your provider account.</li>
+                <li>
+                  On your own Vercel deployment, open the project’s{" "}
+                  <strong>Settings → Environment Variables</strong> and add the
+                  variable above and STUDIO_ACCESS_TOKEN to protect access.
+                </li>
+                <li>
+                  Redeploy, then use <strong>Test connection</strong> here.
+                </li>
+              </ol>
+              <p className="p-field-hint">
+                For local development, add it to the ignored .env.local file.
+                Never put keys in workflow instructions or project JSON.
+              </p>
+            </>
             <a
               className="p-button p-primary"
               href={

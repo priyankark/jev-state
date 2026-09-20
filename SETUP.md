@@ -1,16 +1,5 @@
 # Setup
 
-See [README.md](README.md) for the studio and [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)
-for local development, Docker, Vercel, accounts, storage and subscriptions.
+Start with the [README quickstart](README.md#quickstart). Simulation requires Node.js 22 and no accounts or API keys.
 
-No credentials are part of this repository. Copy `.env.example` to `.env.local`.
-Simulation needs no provider account. For live decisions, create a TypeSafe key
-and keep it on the server. Hosted cloud users add their personal keys through
-Connections; those keys are verified and encrypted per account.
-
-`npm run check:env` verifies TypeSafe authentication and available models.
-`npm run smoke:jev` makes one real inference with a synthetic ticket.
-
-The TypeSafe SDK returns `ModelCard[]` from `models.list()` and accepts
-`maxRetries` for retry configuration. Consult the current documentation and
-installed type declarations when updating dependencies.
+For provider configuration, Vercel, Docker, a shared access code, and troubleshooting, see [the self-hosting guide](docs/SELF_HOSTING.md). For a first workflow, follow [the tutorial](docs/TUTORIAL.md).

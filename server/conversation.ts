@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { choice, TypeSafeClient } from "@typesafe-ai/sdk";
 import OpenAI from "openai";
 import { createActor, createMachine } from "xstate";
+import { evaluationSchema } from "../packages/core/src/schema.js";
+import { liveEnabled } from "./access.js";
 import type {
   TurnRequest,
   TurnResult,
@@ -25,6 +27,7 @@ export function serverConnectors(
       : {}),
   },
 ): Connectors {
+  if (!liveEnabled()) return {};
   return {
     ...(keys.jev
       ? {
@@ -97,12 +100,21 @@ export async function executeTurn(
     inputTokens = 0,
     outputTokens = 0;
   if (mode === "live") {
-    const result = await connectors.jev!.systemOne(
-      { state: input, questions },
-      { signal },
+    const result = evaluationSchema.parse(
+      await connectors.jev!.systemOne({ state: input, questions }, { signal }),
     );
     const answer = result.answers.next_state;
-    if (!Object.hasOwn(choices, answer.choice))
+    if (
+      !answer ||
+      answer.type !== "choice" ||
+      !Object.hasOwn(choices, answer.choice) ||
+      Object.keys(choices).some(
+        (key) => !Object.hasOwn(answer.probabilities, key),
+      ) ||
+      Object.keys(answer.probabilities).some(
+        (key) => !Object.hasOwn(choices, key),
+      )
+    )
       throw new Error("Jev returned an invalid transition.");
     selected = answer.choice;
     confidence = answer.confidence;

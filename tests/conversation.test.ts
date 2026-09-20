@@ -189,6 +189,34 @@ test("public local API works without an account and blocks foreign origins", asy
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/studio`;
   try {
     assert.equal((await fetch(`${base}/connections`)).status, 200);
+    const config = await (await fetch(`${base}/connections`)).json();
+    assert.equal(config.liveEnabled, false);
+    assert.equal(config.jev, false);
+    assert.equal(
+      (
+        await fetch(`${base}/turn`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            project: templates[0],
+            currentState: "welcome",
+            messages: [{ role: "user", content: "hello" }],
+            mode: "live",
+          }),
+        })
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await fetch(`${base}/connections/test`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ provider: "jev" }),
+        })
+      ).status,
+      403,
+    );
     assert.equal(
       (
         await fetch(`${base}/connections`, {
@@ -202,6 +230,94 @@ test("public local API works without an account and blocks foreign origins", asy
     else process.env.STUDIO_ACCESS_TOKEN = oldToken;
     if (oldVercel === undefined) delete process.env.VERCEL;
     else process.env.VERCEL = oldVercel;
+    server.closeAllConnections();
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});
+
+test("invalid live probability distributions never become a transition", async () => {
+  for (const probabilities of [
+    { billing: 0.9 },
+    { billing: 0.5, technical: 0, review: 0, stay: 0 },
+    { billing: 1, technical: 0, review: 0, stay: 0, injected: 0 },
+  ]) {
+    const jev = new TypeSafeClient({
+      apiKey: "test-only",
+      fetch: async () =>
+        new Response(
+          JSON.stringify({
+            model: "test",
+            answers: {
+              next_state: {
+                type: "choice",
+                choice: "billing",
+                confidence: 0.99,
+                probabilities,
+              },
+            },
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    });
+    await assert.rejects(() =>
+      executeTurn(
+        {
+          project: templates[0]!,
+          currentState: "welcome",
+          messages: [{ role: "user", content: "charged twice" }],
+          mode: "live",
+        },
+        { jev },
+        signal(),
+      ),
+    );
+  }
+});
+
+test("protected hosted workspace requires its access code and then permits simulation", async () => {
+  const before = {
+    token: process.env.STUDIO_ACCESS_TOKEN,
+    vercel: process.env.VERCEL,
+  };
+  process.env.STUDIO_ACCESS_TOKEN = "test-secret";
+  process.env.VERCEL = "1";
+  const app = express();
+  app.use("/api/studio", createStudioApi());
+  const server = createServer(app);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/studio`;
+  try {
+    assert.equal((await fetch(`${base}/connections`)).status, 401);
+    const post = (accessCode: string) =>
+      fetch(`${base}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessCode }),
+      });
+    assert.equal((await post("wrong")).status, 401);
+    const login = await post("test-secret");
+    assert.equal(login.status, 200);
+    const cookie = login.headers.get("set-cookie")!;
+    assert.match(cookie, /HttpOnly/);
+    assert.match(cookie, /Secure/);
+    assert.equal(
+      (
+        await fetch(`${base}/connections`, {
+          headers: { cookie: cookie.split(";")[0]! },
+        })
+      ).status,
+      200,
+    );
+  } finally {
+    for (const [key, value] of [
+      ["STUDIO_ACCESS_TOKEN", before.token],
+      ["VERCEL", before.vercel],
+    ]) {
+      if (value === undefined) delete process.env[key!];
+      else process.env[key!] = value;
+    }
     server.closeAllConnections();
     await new Promise<void>((r) => server.close(() => r()));
   }

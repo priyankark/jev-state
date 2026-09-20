@@ -23,7 +23,15 @@ This review used actual mouse, keyboard, and touch-sized browser interactions in
 ## Regression checks
 
 - `tests/e2e/graph.spec.ts`: drag vs pan, connection creation/removal, undo/redo, saved coordinates after reload, state editing/removal, simulation keyword typing, auto layout, expansion, conversation inspection, transition highlighting, layout edits during conversations, initial-state eval staleness, mobile overflow, modal errors and keyboard focus.
-- `tests/e2e/cloud.spec.ts`: authenticated graph save and reopening in another browser context, conversation/eval persistence, and project limits. Uses an isolated temporary user and cleans up afterward.
+- `tests/e2e/workspace.spec.ts`: backup/restore of projects, conversations and evaluations; malformed backup rejection; corrupt data recovery; multiple-tab conflict prevention; quota failure feedback.
 - Existing local API, runtime, conversation, legacy studio and workspace browser tests remain in place.
 
 The canvas still models flat workflows with up to 12 states. Nested/parallel statecharts and remote tool connectors remain outside this implementation. Narrow screens offer an expanded graph and a scrollable state picker; complex graphs may require zooming.
+
+## Open-source release validation
+
+The subscription backend, account components, database migrations, payment SDK, and account-only tests were removed. The public demo runs simulation without a provider key. Tests cover fail-closed hosted live calls, shared access-code cookies, and same-origin requests.
+
+Additional runtime coverage includes duplicate graph/case IDs, malformed provider distributions, workflow diagnostics, path coverage, full-history backup validation, and CLI pass/fail/error exit codes. New workspace browser tests caught and fixed an incorrect recovery message after resetting corrupt data.
+
+A live TypeSafe run on September 20, 2026 passed the support example's three cases using `jev-1.13.0`: 5/5 states and 4/7 transitions exercised, 2,293 input tokens and 177 output tokens reported. This is a smoke check of that example, not a domain accuracy benchmark. OpenAI is tested against controlled SDK HTTP responses; no live OpenAI account inference was performed for this release.

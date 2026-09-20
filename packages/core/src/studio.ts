@@ -55,6 +55,11 @@ export const projectSchema = z
         code: "custom",
         message: "Choose an existing initial state",
       });
+    if (new Set(p.cases.map((c) => c.id)).size !== p.cases.length)
+      ctx.addIssue({
+        code: "custom",
+        message: "Evaluation case IDs must be unique",
+      });
     for (const c of p.cases)
       if (!ids.has(c.expectedState))
         ctx.addIssue({
@@ -62,6 +67,11 @@ export const projectSchema = z
           message: "An evaluation expects a state that no longer exists",
         });
     for (const s of p.states) {
+      if (new Set(s.transitions).size !== s.transitions.length)
+        ctx.addIssue({
+          code: "custom",
+          message: `Duplicate transitions in ${s.label}`,
+        });
       if (s.transitions.some((t) => !ids.has(t) || t === s.id))
         ctx.addIssue({
           code: "custom",
