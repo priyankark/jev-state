@@ -30,9 +30,9 @@ Examples are templates, never presented as your own existing projects. Simulatio
 - Dodo hosted subscriptions, customer portal, cancellation, and signed webhook synchronization.
 - Workspace export and account deletion. Downgrading preserves existing projects; adding projects beyond the free limit requires upgrading or removing projects.
 
-The current deployment uses **Dodo test mode** and a **$19/month test product**. It does not charge real subscriptions. Production pricing and live billing activation are separate merchant configuration steps.
+The hosted Pro plan is **$19/month USD**, plus any applicable tax, billed through Dodo Payments. Live checkout uses a separate verified Jev State brand. The subscription lifecycle was validated with Dodo test payments before activation. See [service terms](https://jev-state.vercel.app/terms) and [privacy](https://jev-state.vercel.app/privacy).
 
-Cloud mode retains the latest 60 conversations and 40 evaluation reports per account, with a 4 MB request limit. Export for longer retention. Local mode stores work in this browser. Unsynced cloud changes have a device backup keyed to the account; export them if a conflict occurs before reloading.
+Cloud mode retains the latest 60 conversations and 40 evaluation reports per account, with a 4 MB request limit. Export for longer retention. Local mode stores work in this browser. Unsynced cloud changes have a device backup keyed to the account. After reopening, a recovery banner offers a download; export the backup before discarding it.
 
 The editor supports 12 flat states, 20 conversation turns, and 30 evaluation cases per project. Cases run sequentially in the browser; they are not durable background jobs. Workflow snapshots preserve past conversations, and evaluation configuration signatures identify outdated results. Provider charges may occur even if a request is cancelled.
 

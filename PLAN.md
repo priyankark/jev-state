@@ -1,6 +1,6 @@
 # Implementation status — 2026-09-20
 
-The original plan below is retained as design history. Implemented: visual flat-state workflows, multi-turn conversations, OpenAI Responses connection, deterministic evaluations, Supabase accounts/cloud storage, encrypted tenant credentials, three-free-project quotas, Dodo subscriptions in test mode, Vercel deployment, and MIT licensing. Remaining: teams, nested/parallel states, remote MCP/Agents SDK connectors, model-graded evals and durable background execution. See README for current behavior.
+The original plan below is retained as design history. Implemented: visual flat-state workflows, multi-turn conversations, OpenAI Responses connection, deterministic evaluations, Supabase accounts/cloud storage, encrypted tenant credentials, three-free-project quotas, Dodo hosted subscriptions (sandbox cycle verified, live brand configured), Vercel deployment, and MIT licensing. Remaining: teams, nested/parallel states, remote MCP/Agents SDK connectors, model-graded evals and durable background execution. See README for current behavior.
 
 # Jev State: implementation plan
 

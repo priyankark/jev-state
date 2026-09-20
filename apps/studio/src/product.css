@@ -3067,3 +3067,33 @@
     text-align: center;
   }
 }
+.s-policy {
+  max-width: 820px;
+  margin: 35px auto 65px;
+  padding: 0 32px;
+  color: #446354;
+  line-height: 1.85;
+  font-size: 14px;
+}
+.s-policy h1 {
+  font-size: 38px;
+  letter-spacing: -1.5px;
+  color: #1d392c;
+  line-height: 1.2;
+}
+.s-policy h2 {
+  font-size: 19px;
+  color: #274933;
+  margin: 32px 0 8px;
+}
+.s-policy p {
+  margin: 8px 0 14px;
+}
+.s-policy a {
+  color: #305f43;
+  text-underline-offset: 3px;
+}
+.s-policy-date {
+  font-size: 12px;
+  color: #8c998d;
+}

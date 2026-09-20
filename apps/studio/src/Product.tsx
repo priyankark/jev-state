@@ -919,6 +919,33 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
             e.target.value = "";
           }}
         />
+        {cloud && sync.recovery !== null && (
+          <div className="p-banner">
+            <span>
+              Unsynced work from an earlier session was recovered. Download a
+              backup before discarding it.
+            </span>
+            <button
+              onClick={() =>
+                exportJson(sync.recovery, "jev-state-recovered.json")
+              }
+            >
+              Download recovery
+            </button>
+            <button
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Discard the recovered backup? Your current cloud workspace is unchanged.",
+                  )
+                )
+                  sync.discardRecovery();
+              }}
+            >
+              Discard backup
+            </button>
+          </div>
+        )}
         {cloud && sync.error && (
           <div className="p-banner p-error" role="alert">
             <span>{sync.error}</span>

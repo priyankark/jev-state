@@ -49,6 +49,7 @@ export function createCloudApi() {
       mode: "cloud",
       githubEnabled: process.env.GITHUB_AUTH_ENABLED === "true",
       emailSignupEnabled: process.env.EMAIL_AUTH_ENABLED === "true",
+      supportEmail: process.env.SUPPORT_EMAIL || null,
       hosted: !!process.env.VERCEL,
       authenticated: !!user,
       supabaseUrl: process.env.SUPABASE_URL,
@@ -311,7 +312,7 @@ export function createCloudApi() {
       return;
     }
     const user = res.locals.user;
-    const a = await account(user.id);
+    let a = await account(user.id);
     if (entitlement(a).plan === "pro") {
       res
         .status(409)
@@ -331,10 +332,30 @@ export function createCloudApi() {
       return;
     }
     try {
+      // Re-read under the checkout lease; another request may have just finished.
+      a = await account(user.id);
+      if (a.customer_id) {
+        const subscriptions = await client.subscriptions.list({
+          customer_id: a.customer_id,
+        });
+        if (
+          subscriptions.items.some(
+            (s) =>
+              s.product_id === process.env.DODO_PAYMENTS_PRODUCT_ID &&
+              !["cancelled", "expired", "failed"].includes(s.status),
+          )
+        ) {
+          res.status(409).json({
+            error:
+              "A subscription already exists. Refresh your plan or use Manage subscription.",
+          });
+          return;
+        }
+      }
       if (
         a.checkout_id &&
         a.checkout_at &&
-        Date.parse(a.checkout_at) > Date.now() - 23 * 3600000
+        Date.parse(a.checkout_at) > Date.now() - 24 * 3600000
       ) {
         const existing = await client.checkoutSessions.retrieve(a.checkout_id);
         if (
@@ -347,7 +368,10 @@ export function createCloudApi() {
           });
           return;
         }
-        if (!existing.payment_id && a.checkout_url) {
+        if (
+          !["failed", "cancelled"].includes(existing.payment_status || "") &&
+          a.checkout_url
+        ) {
           res.json({ url: a.checkout_url });
           return;
         }
@@ -425,6 +449,40 @@ export function createCloudApi() {
       return;
     }
     const a = await account(user.id);
+    if (billingReady() && a.customer_id) {
+      const subscriptions = await paymentClient().subscriptions.list({
+        customer_id: a.customer_id,
+      });
+      if (
+        subscriptions.items.some(
+          (s) =>
+            s.product_id === process.env.DODO_PAYMENTS_PRODUCT_ID &&
+            !["cancelled", "expired", "failed"].includes(s.status),
+        )
+      ) {
+        res.status(409).json({
+          error:
+            "Resolve your subscription in the billing portal before deleting your account.",
+        });
+        return;
+      }
+      if (
+        a.checkout_id &&
+        a.checkout_at &&
+        Date.parse(a.checkout_at) > Date.now() - 24 * 3600000
+      ) {
+        const checkout = await paymentClient().checkoutSessions.retrieve(
+          a.checkout_id,
+        );
+        if (!["failed", "cancelled"].includes(checkout.payment_status || "")) {
+          res.status(409).json({
+            error:
+              "A recent checkout is still open or processing. Contact support, or wait for it to expire within 24 hours before deleting your account.",
+          });
+          return;
+        }
+      }
+    }
     if (
       a.subscription_status === "active" ||
       a.subscription_status === "on_hold"
@@ -446,6 +504,20 @@ export function createCloudApi() {
       res: express.Response,
       _next: express.NextFunction,
     ) => {
+      if (
+        _error &&
+        typeof _error === "object" &&
+        "type" in _error &&
+        _error.type === "entity.too.large"
+      ) {
+        res
+          .status(413)
+          .json({
+            error:
+              "This workspace exceeds 4 MB. Export your work, delete a project you no longer need, then retry saving.",
+          });
+        return;
+      }
       res
         .status(503)
         .json({ error: "This request could not complete. Please try again." });

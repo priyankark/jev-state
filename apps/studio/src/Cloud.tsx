@@ -397,6 +397,8 @@ function AccountAccess({
       </main>
       <footer>
         <span>Built with Jev. Made for developers.</span>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
         <a
           href="https://github.com/priyankark/jev-state/blob/main/LICENSE"
           target="_blank"
@@ -412,6 +414,20 @@ export function useCloudSync(
   cloud: CloudWorkspace | undefined,
   library: Library,
 ) {
+  const [recovery, setRecovery] = useState<unknown | null>(() => {
+    if (!cloud) return null;
+    try {
+      const archived = localStorage.getItem(`jev-recovery-${cloud.user.id}`);
+      const unsynced = localStorage.getItem(`jev-unsynced-${cloud.user.id}`);
+      const candidate = archived || unsynced;
+      if (!candidate || candidate === JSON.stringify(library)) return null;
+      const parsed: unknown = JSON.parse(candidate);
+      localStorage.setItem(`jev-recovery-${cloud.user.id}`, candidate);
+      return parsed;
+    } catch {
+      return null;
+    }
+  });
   const [status, setStatus] = useState(
       cloud ? "Saved to cloud" : "Saved on this device",
     ),
@@ -460,7 +476,7 @@ export function useCloudSync(
   useEffect(() => {
     if (!cloud) return;
     if (JSON.stringify(library) === saved.current) return;
-    setStatus("Saving to cloud…");
+    setStatus(halted.current ? "Changes not synced" : "Saving to cloud…");
     try {
       localStorage.setItem(
         `jev-unsynced-${cloud.user.id}`,
@@ -488,6 +504,11 @@ export function useCloudSync(
   return {
     status,
     error,
+    recovery,
+    discardRecovery: () => {
+      if (cloud) localStorage.removeItem(`jev-recovery-${cloud.user.id}`);
+      setRecovery(null);
+    },
     flush,
     retry: () => {
       halted.current = false;
