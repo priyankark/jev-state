@@ -3097,3 +3097,452 @@
   font-size: 12px;
   color: #8c998d;
 }
+
+/* The workflow canvas owns the builder; settings scroll independently. */
+.p-builder {
+  grid-template-columns: minmax(0, 1fr) 330px;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: calc(100dvh - 310px);
+  min-height: 610px;
+}
+.p-builder > .p-save-bar {
+  grid-column: 1 / -1;
+  border-top: 0;
+  border-bottom: 1px solid #dfe7d5;
+  padding: 11px 18px;
+  background: #fff;
+}
+.p-save-bar > span {
+  font-size: 12px;
+  color: #536650;
+}
+.p-builder-canvas {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.p-builder-bar {
+  min-height: 53px;
+  flex-shrink: 0;
+  background: #fafcf7;
+  gap: 12px;
+}
+.p-builder-bar > span {
+  color: #526950;
+  font-size: 12px;
+}
+.p-builder-bar .p-button {
+  font-size: 11px;
+  min-height: 32px;
+}
+.p-build-graph {
+  flex: 1;
+  height: auto;
+  min-height: 330px;
+  border-bottom: 0;
+}
+.p-graph {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: #f6f9f1;
+}
+.p-graph-expanded {
+  position: fixed;
+  inset: 18px;
+  width: auto;
+  height: auto;
+  z-index: 30;
+  border: 1px solid #adbea5;
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 30px #172e22b3,
+    0 20px 80px #172e2250;
+  overflow: hidden;
+}
+.p-flow-state {
+  width: 240px;
+  height: 136px;
+  border-color: #afbfaa;
+  padding: 15px 17px;
+  box-shadow: 0 3px 10px #31432909;
+  cursor: pointer;
+}
+.p-flow-state > strong {
+  font-size: 16px;
+  color: #2e4a36;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.p-flow-state > p {
+  font-size: 12px;
+  line-height: 1.55;
+  color: #65765d;
+}
+.p-flow-state small {
+  font-size: 9px;
+  color: #617357;
+}
+.p-flow-state > .p-node-heading {
+  margin-bottom: 10px;
+}
+.p-node-current {
+  font: 8px var(--mono);
+  margin-left: auto;
+  color: #315640;
+}
+.p-flow-state.is-selected {
+  outline: 2px solid #456d41;
+  outline-offset: 3px;
+}
+.p-flow-state.is-active {
+  border-color: #517c46;
+  background: #edf6e6;
+}
+.p-flow-state .react-flow__handle {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  min-height: 14px;
+  border: 2px solid white;
+  background: #608252;
+  border-radius: 50%;
+  margin: 0;
+  padding: 0;
+  cursor: crosshair;
+}
+.p-flow-state .react-flow__handle:hover {
+  background: #244c31;
+  box-shadow: 0 0 0 5px #91b27c40;
+}
+.p-flow-state .react-flow__handle-left {
+  left: -7px;
+}
+.p-flow-state .react-flow__handle-right {
+  right: -7px;
+}
+.p-graph .react-flow__controls {
+  bottom: 10px;
+  left: 10px;
+}
+.p-graph .react-flow__controls-button {
+  width: 32px;
+  height: 32px;
+  padding: 8px;
+  color: #405e39;
+}
+.p-graph-tools {
+  display: flex;
+  gap: 6px;
+}
+.p-graph-tools .p-button {
+  padding: 8px 10px;
+  font-size: 11px;
+  box-shadow: 0 2px 8px #29493008;
+}
+.p-canvas-help {
+  flex-shrink: 0;
+  border-top: 1px solid #e1e8da;
+  padding: 11px 15px;
+  color: #5e7357;
+  background: #f8faf5;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.p-state-list {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 11px 13px;
+  background: white;
+  flex-shrink: 0;
+  border-top: 1px solid #e5ebdf;
+}
+.p-state-list button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid #dce5d5;
+  border-radius: 5px;
+  padding: 7px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: #596f50;
+}
+.p-state-list button.active {
+  background: #eaf2e2;
+  border-color: #88a373;
+  color: #315640;
+}
+.p-state-editor {
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0 19px 20px;
+}
+.p-inspector-tabs {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin: 0 -19px 20px;
+  padding: 0 12px;
+  background: #fcfdf9;
+  border-bottom: 1px solid #dfe7d5;
+}
+.p-inspector-tabs button {
+  flex: 1;
+  padding: 17px 5px;
+  font-size: 12px;
+  color: #76876b;
+  border-bottom: 2px solid transparent;
+}
+.p-inspector-tabs button.active {
+  color: #315640;
+  border-bottom-color: #41683f;
+  font-weight: 600;
+}
+.p-state-editor .p-panel-heading {
+  color: #314f3b;
+  font-size: 14px;
+  margin-bottom: 20px;
+  overflow-wrap: anywhere;
+}
+.p-state-editor .p-panel-heading > span:last-child {
+  color: #73846a;
+}
+.p-state-editor label,
+.p-state-editor legend {
+  color: #526b47;
+  font-size: 12px;
+}
+.p-state-editor textarea,
+.p-state-editor input:not([type="checkbox"]),
+.p-state-editor select {
+  font-size: 12px;
+  color: #344e38;
+}
+.p-state-editor .p-field-hint {
+  font-size: 11px;
+  color: #6b7b60;
+}
+.p-state-editor .p-checkbox-label {
+  font-size: 12px !important;
+  line-height: 1.5;
+}
+.p-state-editor .p-workflow-settings {
+  padding: 0;
+}
+.p-state-editor .p-form-row {
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+.p-state-editor .p-threshold small,
+.p-state-editor .p-agent-setting p {
+  font-size: 11px;
+  color: #6b7b60;
+}
+.p-state-editor .p-agent-setting > div:first-child {
+  flex-wrap: wrap;
+}
+.p-state-editor .p-agent-setting strong {
+  font-size: 12px;
+}
+.p-state-warning {
+  border: 1px solid #e1d4ad;
+  border-radius: 6px;
+  background: #fffaea;
+  color: #826c31;
+  padding: 11px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.p-edge-editor {
+  width: 360px;
+  max-width: calc(100% - 90px);
+  padding: 16px;
+  background: white;
+  border: 1px solid #b4c5a7;
+  border-radius: 9px;
+  box-shadow: 0 7px 24px #28422920;
+}
+.p-edge-editor strong {
+  display: block;
+  padding-right: 18px;
+  font-size: 13px;
+  color: #315640;
+}
+.p-edge-editor p {
+  font-size: 12px;
+  color: #627659;
+  line-height: 1.6;
+  max-height: 90px;
+  overflow: auto;
+}
+.p-edge-editor > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.p-edge-editor .p-button {
+  padding: 7px 9px;
+  font-size: 11px;
+}
+.p-edge-close {
+  position: absolute;
+  top: 10px;
+  right: 8px;
+}
+.p-state-peek {
+  position: relative;
+  padding: 18px;
+  border: 1px solid #bccdac;
+  margin: 12px 0;
+  border-radius: 8px;
+  background: #f6faee;
+}
+.p-state-peek > button:first-child {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+}
+.p-state-peek h3 {
+  margin: 8px 0;
+  color: #315640;
+}
+.p-state-peek p,
+.p-state-peek small {
+  font-size: 12px;
+  color: #62745b;
+  line-height: 1.7;
+}
+.p-state-peek > .p-text-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+}
+.p-live-graph {
+  height: 290px;
+}
+.p-live-inspector .p-graph .p-flow-state {
+  cursor: pointer;
+}
+.p-button:disabled {
+  opacity: 0.5;
+}
+@media (max-width: 1150px) {
+  .p-builder {
+    grid-template-columns: minmax(0, 1fr) 290px;
+  }
+  .p-project-page {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .p-builder-bar {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 720px) {
+  .p-builder {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    height: auto;
+    min-height: 0;
+  }
+  .p-builder > .p-save-bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: 10px;
+    flex-wrap: wrap;
+  }
+  .p-save-bar > span {
+    font-size: 11px;
+  }
+  .p-builder-canvas {
+    min-height: 470px;
+  }
+  .p-build-graph {
+    height: 340px;
+    flex: none;
+  }
+  .p-state-editor {
+    max-height: 650px;
+    padding: 0 18px 20px;
+  }
+  .p-inspector-tabs {
+    margin: 0 -18px 18px;
+  }
+  .p-canvas-help {
+    font-size: 10px;
+  }
+  .p-builder-bar > span {
+    font-size: 10px;
+  }
+  .p-graph-expanded {
+    inset: 8px;
+  }
+  .p-edge-editor {
+    max-width: calc(100% - 25px);
+    width: 330px;
+    margin-bottom: 115px;
+  }
+}
+.p-simulation-hints {
+  margin-bottom: 12px;
+}
+.p-simulation-hints small {
+  font-size: 11px;
+  color: #667b5a;
+  line-height: 1.6;
+  display: block;
+}
+.p-simulation-hints > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.p-simulation-hints button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  border: 1px solid #d9e4cd;
+  border-radius: 5px;
+  font-size: 11px;
+  color: #506d40;
+  background: #f6faef;
+}
+.p-chat-item p {
+  color: #456039;
+  font-size: 13px;
+}
+.p-current-state p,
+.p-judgment,
+.p-conversation-start p {
+  color: #667b58;
+}
+.p-chat-options > span {
+  font-size: 10px;
+  color: #708263;
+}
+.p-mode button {
+  font-size: 11px;
+  color: #677e56;
+}
+.p-chat-compose textarea {
+  font-size: 13px;
+  color: #365337;
+}
+.p-chat-compose > small {
+  font-size: 10px;
+  color: #708363;
+}
+@media (min-width: 721px) {
+  .p-chat {
+    height: calc(100dvh - 310px);
+    min-height: 610px;
+  }
+}

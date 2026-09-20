@@ -52,6 +52,21 @@ test("cloud workspace persists across browser contexts, runs conversations and e
     await page
       .getByRole("button", { name: "Create project", exact: true })
       .click();
+    const startNode = page.locator('.react-flow__node[data-id="welcome"]');
+    const box = (await startNode.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      box.x + box.width / 2 + 25,
+      box.y + box.height / 2 + 45,
+      { steps: 12 },
+    );
+    await page.mouse.up();
+    await page
+      .getByRole("button", { name: "Save workflow", exact: true })
+      .click();
+    const savedPosition = await startNode.getAttribute("style");
+    await expect(page.locator(".p-device")).toContainText("Saved to cloud");
     await page.getByRole("button", { name: "Converse", exact: true }).click();
     await page
       .getByRole("textbox", { name: "Conversation message" })
@@ -81,6 +96,15 @@ test("cloud workspace persists across browser contexts, runs conversations and e
       .getByRole("button", { name: /Cloud support/ })
       .first()
       .click();
+    await other.getByRole("button", { name: "Build", exact: true }).click();
+    await expect(
+      other.locator('.react-flow__node[data-id="welcome"]'),
+    ).toHaveAttribute("style", savedPosition!);
+    await other.screenshot({
+      path: ".local/ux/cloud-builder-tested.png",
+      fullPage: true,
+    });
+    await other.getByRole("button", { name: "Converse", exact: true }).click();
     await other
       .locator(".p-session-history button")
       .filter({ hasText: "I was charged twice" })

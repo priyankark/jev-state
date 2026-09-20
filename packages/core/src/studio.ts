@@ -14,6 +14,12 @@ export const stateSchema = z.object({
   keywords: z.array(z.string().max(50)).max(20),
   transitions: z.array(id).max(12),
   terminal: z.boolean(),
+  position: z
+    .object({
+      x: z.number().finite().min(-100000).max(100000),
+      y: z.number().finite().min(-100000).max(100000),
+    })
+    .optional(),
 });
 export const evalCaseSchema = z.object({
   id: z.string().min(1).max(100),
@@ -70,6 +76,25 @@ export const projectSchema = z
   });
 export type Project = z.infer<typeof projectSchema>;
 export type WorkflowState = z.infer<typeof stateSchema>;
+
+// Canvas coordinates are presentation, not a new conversation policy.
+export function workflowSignature(project: Project): string {
+  return JSON.stringify({
+    name: project.name,
+    initial: project.initial,
+    states: project.states.map(({ position: _position, ...state }) => state),
+    instructions: project.instructions,
+    threshold: project.threshold,
+    agent: project.agent,
+  });
+}
+export function evaluationSignature(project: Project): string {
+  return JSON.stringify({
+    workflow: workflowSignature(project),
+    cases: project.cases,
+  });
+}
+
 export type EvalCase = z.infer<typeof evalCaseSchema>;
 export const messageSchema = z.object({
   role: z.enum(["user", "assistant"]),

@@ -15,7 +15,7 @@ npm run dev
 Open http://localhost:5173. Simulation works without accounts or API keys. Add a server-side `TYPESAFE_API_KEY` for live decisions and `OPENAI_API_KEY` for generated replies.
 
 1. Create a blank project or copy an explicitly labeled example.
-2. Define state descriptions, replies, transitions, confidence thresholds, and agent instructions.
+2. Drag states to arrange the graph, connect their handles to add transitions, and click a state or line to edit it. Undo/redo and automatic layout are available. State settings and workflow settings live beside the canvas.
 3. Converse across multiple turns and inspect each transition's probabilities, inputs, models, latency, and token usage.
 4. Add evaluation cases with up to five user turns, an expected final state, and an optional reply assertion. Run, inspect, and export results.
 
@@ -34,7 +34,7 @@ The hosted Pro plan is **$19/month USD**, plus any applicable tax, billed throug
 
 Cloud mode retains the latest 60 conversations and 40 evaluation reports per account, with a 4 MB request limit. Export for longer retention. Local mode stores work in this browser. Unsynced cloud changes have a device backup keyed to the account. After reopening, a recovery banner offers a download; export the backup before discarding it.
 
-The editor supports 12 flat states, 20 conversation turns, and 30 evaluation cases per project. Cases run sequentially in the browser; they are not durable background jobs. Workflow snapshots preserve past conversations, and evaluation configuration signatures identify outdated results. Provider charges may occur even if a request is cancelled.
+The editor supports 12 flat states, 20 conversation turns, and 30 evaluation cases per project. Cases run sequentially in the browser; they are not durable background jobs. Node positions persist in exports and cloud saves. Moving nodes does not reset a conversation or invalidate evaluations. Workflow snapshots preserve past conversations, and evaluation configuration signatures identify outdated results, including changes to the initial state. Provider charges may occur even if a request is cancelled.
 
 ## Deploy or self-host
 
@@ -56,7 +56,8 @@ These create and remove isolated test users. Tests cover tenant isolation, direc
 
 ## Source
 
-- `apps/studio/src/Product.tsx`: visual editor, conversations, evaluations, connections.
+- `apps/studio/src/Product.tsx`: editor settings, conversations, evaluations, connections.
+- `apps/studio/src/ProjectGraph.tsx`: interactive canvas, layout, connections, state and transition inspection.
 - `apps/studio/src/Cloud.tsx`: accounts, cloud synchronization, plans and account controls.
 - `server/cloud-api.ts`: authenticated SaaS API and tenant-scoped operations.
 - `server/billing.ts`: raw-body Dodo webhook verification and subscription reconciliation.

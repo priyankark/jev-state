@@ -1,16 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  ReactFlow,
-  Background,
-  Controls,
-  Handle,
-  Position,
-  MarkerType,
-  type NodeProps,
-  type Node,
-} from "@xyflow/react";
+import { ProjectGraph, layoutStates } from "./ProjectGraph.js";
 import {
   Activity,
+  Undo2,
+  Redo2,
   ArrowDown,
   ArrowLeft,
   ArrowRight,
@@ -49,6 +42,8 @@ import {
   blankProject,
   copyTemplate,
   projectSchema,
+  workflowSignature,
+  evaluationSignature,
   type Project,
   type Conversation,
   type TurnResult,
@@ -126,107 +121,6 @@ function prettyTime(ms: number) {
 function percent(n: number) {
   return `${Math.round(n * 100)}%`;
 }
-function FlowState({
-  data,
-  selected,
-}: NodeProps<
-  Node<{ state: WorkflowState; active: boolean; initial: boolean }>
->) {
-  return (
-    <div
-      className={`p-flow-state ${data.active ? "is-active" : ""} ${selected ? "is-selected" : ""} ${data.state.terminal ? "is-terminal" : ""}`}
-    >
-      <Handle type="target" position={Position.Left} />
-      <div>
-        <span className="p-node-symbol">
-          {data.state.terminal ? <Check size={16} /> : <Zap size={16} />}
-        </span>
-        <small>
-          {data.initial
-            ? "START"
-            : data.state.terminal
-              ? "END STATE"
-              : "CONVERSATION STATE"}
-        </small>
-        {data.active && <i />}
-      </div>
-      <strong>{data.state.label}</strong>
-      <p>{data.state.description || "Add transition criteria"}</p>
-      <Handle type="source" position={Position.Right} />
-    </div>
-  );
-}
-const flowTypes = { state: FlowState };
-function ProjectGraph({
-  project,
-  current,
-  selected,
-  onSelect,
-}: {
-  project: Project;
-  current?: string | undefined;
-  selected?: string | undefined;
-  onSelect: (id: string) => void;
-}) {
-  const levels = new Map<string, number>([[project.initial, 0]]);
-  const queue = [project.initial];
-  while (queue.length) {
-    const id = queue.shift()!;
-    for (const to of project.states.find((s) => s.id === id)?.transitions ?? [])
-      if (!levels.has(to)) {
-        levels.set(to, levels.get(id)! + 1);
-        queue.push(to);
-      }
-  }
-  const rows: Record<number, number> = {};
-  const nodes = project.states.map((s) => {
-    const col = levels.get(s.id) ?? 2;
-    const row = rows[col] ?? 0;
-    rows[col] = row + 1;
-    return {
-      id: s.id,
-      type: "state",
-      position: { x: col * 300, y: row * 175 },
-      selected: s.id === selected,
-      data: {
-        state: s,
-        active: s.id === current,
-        initial: s.id === project.initial,
-      },
-    };
-  });
-  const edges = project.states.flatMap((s) =>
-    s.transitions.map((to) => ({
-      id: `${s.id}-${to}`,
-      source: s.id,
-      target: to,
-      type: "smoothstep",
-      markerEnd: { type: MarkerType.ArrowClosed, color: "#a2b09c" },
-      style: {
-        stroke: to === current ? "#577c48" : "#bbc7b6",
-        strokeWidth: to === current ? 2 : 1.4,
-      },
-    })),
-  );
-  return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={flowTypes}
-      onNodeClick={(_, node) => onSelect(node.id)}
-      nodesConnectable={false}
-      nodesDraggable={false}
-      fitView
-      fitViewOptions={{ padding: 0.25 }}
-      minZoom={0.35}
-      maxZoom={1.2}
-      proOptions={{ hideAttribution: true }}
-    >
-      <Background color="#dfe6d8" gap={20} />
-      <Controls showInteractive={false} />
-    </ReactFlow>
-  );
-}
 export function Product() {
   return (
     <CloudGate
@@ -265,6 +159,11 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
     [create, setCreate] = useState(false),
     [projectName, setProjectName] = useState(""),
     [templateId, setTemplateId] = useState("blank");
+  const [editorPanel, setEditorPanel] = useState<"state" | "workflow">("state");
+  const [past, setPast] = useState<Project[]>([]),
+    [future, setFuture] = useState<Project[]>([]);
+  const lastEdit = useRef({ key: "", at: 0 });
+  const [inspectedState, setInspectedState] = useState<string | null>(null);
   const [draft, setDraft] = useState<Project | null>(null),
     [selectedState, setSelectedState] = useState(""),
     [mode, setMode] = useState<"mock" | "live">("mock");
@@ -298,14 +197,7 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
   const reportStale = !!(
     project &&
     report &&
-    report.configSignature !==
-      JSON.stringify({
-        states: project.states,
-        instructions: project.instructions,
-        threshold: project.threshold,
-        agent: project.agent,
-        cases: project.cases,
-      })
+    report.configSignature !== evaluationSignature(project)
   );
   const viewedTurn =
     conversation?.turns[inspectedTurn ?? conversation.turns.length - 1];
@@ -336,8 +228,11 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
     }
   }, [library]);
   useEffect(() => {
-    chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [conversation?.messages.length, busy]);
+    if (tab !== "conversation") return;
+    const messages = chatEnd.current?.parentElement;
+    messages?.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
+  }, [conversation?.messages.length, busy, tab]);
+
   useEffect(() => () => controller.current?.abort(), []);
   async function refreshConnections() {
     try {
@@ -358,7 +253,15 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
     setEvalProgress("");
   }
   function openProject(p: Project) {
+    if (dirty && !window.confirm("Discard unsaved workflow changes?")) return;
     cancelWork();
+    setPast([]);
+    setFuture([]);
+    lastEdit.current = { key: "", at: 0 };
+    setText("");
+    setInspectedState(null);
+    setEditorPanel("state");
+    window.scrollTo(0, 0);
     setProjectId(p.id);
     setDraft(structuredClone(p));
     setSelectedState(p.initial);
@@ -404,55 +307,227 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
     setCreate(true);
   }
   function saveProject() {
-    if (!draft) return;
+    if (!draft) return false;
     const result = projectSchema.safeParse(draft);
     if (!result.success) {
       setError(result.error.issues[0]?.message || "Check your workflow");
-      return;
+      return false;
     }
-    const next = { ...result.data, version: (project?.version ?? 0) + 1 };
+    const behaviorChanged =
+      !project || workflowSignature(project) !== workflowSignature(result.data);
+    const next = {
+      ...result.data,
+      version: (project?.version ?? 1) + (behaviorChanged ? 1 : 0),
+    };
     setLibrary((prev) => ({
       ...prev,
       projects: prev.projects.map((p) => (p.id === next.id ? next : p)),
     }));
     setDraft(structuredClone(next));
-    setConversationId(null);
-    setInspectedTurn(null);
+    setPast([]);
+    setFuture([]);
+    if (behaviorChanged) {
+      setConversationId(null);
+      setInspectedTurn(null);
+      setInspectedState(null);
+    }
     setError("");
-    notify("Workflow saved. New conversations use this version.");
+    lastEdit.current = { key: "", at: 0 };
+    notify(
+      behaviorChanged
+        ? "Workflow saved. New conversations use this version."
+        : "Layout and settings saved.",
+    );
+    return true;
   }
-  function updateDraft(change: Partial<Project>) {
-    if (working) setDraft({ ...structuredClone(working), ...change });
+  function updateDraft(change: Partial<Project>, editKey = "") {
+    if (!working) return;
+    const next = { ...structuredClone(working), ...change };
+    if (JSON.stringify(next) === JSON.stringify(working)) return;
+    const now = Date.now();
+    if (
+      !editKey ||
+      editKey !== lastEdit.current.key ||
+      now - lastEdit.current.at > 700
+    )
+      setPast((prev) => [...prev.slice(-59), structuredClone(working)]);
+    lastEdit.current = { key: editKey, at: now };
+    setFuture([]);
+    setDraft(next);
+    setError("");
   }
+  function undo() {
+    const previous = past.at(-1);
+    if (!previous || !working) return;
+    setFuture((prev) => [...prev, structuredClone(working)]);
+    setPast((prev) => prev.slice(0, -1));
+    setDraft(previous);
+    lastEdit.current = { key: "", at: 0 };
+  }
+  function redo() {
+    const next = future.at(-1);
+    if (!next || !working) return;
+    setPast((prev) => [...prev, structuredClone(working)]);
+    setFuture((prev) => prev.slice(0, -1));
+    setDraft(next);
+    lastEdit.current = { key: "", at: 0 };
+  }
+  function selectState(id: string) {
+    setSelectedState(id);
+    setEditorPanel("state");
+  }
+  useEffect(() => {
+    const guard = (e: BeforeUnloadEvent) => {
+      if (dirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [dirty]);
+  useEffect(() => {
+    const shortcuts = (e: KeyboardEvent) => {
+      if (tab !== "build" || !project || (!e.metaKey && !e.ctrlKey)) return;
+      if (e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (dirty) saveProject();
+      }
+      const target = e.target as HTMLElement;
+      if (target.closest("input, textarea, select, [contenteditable=true]"))
+        return;
+      if (e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        e.shiftKey ? redo() : undo();
+      }
+    };
+    window.addEventListener("keydown", shortcuts);
+    return () => window.removeEventListener("keydown", shortcuts);
+  });
+  const modalKind = create
+    ? "create"
+    : caseEditor
+      ? "case"
+      : detail
+        ? "detail"
+        : setupProvider
+          ? "connection"
+          : null;
+  useEffect(() => {
+    if (!modalKind) return;
+    setError("");
+    const previous = document.activeElement as HTMLElement | null;
+    const modal = document.querySelector<HTMLElement>(".p-modal");
+    const focusable = () =>
+      Array.from(
+        modal?.querySelectorAll<HTMLElement>(
+          "button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], summary",
+        ) ?? [],
+      ).filter((el) => el.getClientRects().length > 0);
+    const timer = requestAnimationFrame(() => {
+      const firstInput = modal?.querySelector<HTMLElement>(
+        "input, textarea, select",
+      );
+      (firstInput ?? focusable()[0])?.focus();
+    });
+    const keys = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setCreate(false);
+        setCaseEditor(null);
+        setDetail(null);
+        setSetupProvider(null);
+        setProviderKey("");
+        setError("");
+      }
+      if (e.key === "Tab") {
+        const items = focusable(),
+          first = items[0],
+          last = items.at(-1);
+        if (
+          e.shiftKey &&
+          (document.activeElement === first ||
+            !modal?.contains(document.activeElement))
+        ) {
+          e.preventDefault();
+          last?.focus();
+        } else if (
+          !e.shiftKey &&
+          (document.activeElement === last ||
+            !modal?.contains(document.activeElement))
+        ) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", keys);
+    return () => {
+      cancelAnimationFrame(timer);
+      window.removeEventListener("keydown", keys);
+      document.body.style.overflow = overflow;
+      previous?.focus();
+    };
+  }, [modalKind]);
   function updateState(change: Partial<WorkflowState>) {
     if (working && selected)
-      updateDraft({
-        states: working.states.map((s) =>
-          s.id === selected.id ? { ...s, ...change } : s,
-        ),
-      });
+      updateDraft(
+        {
+          states: working.states.map((s) =>
+            s.id === selected.id ? { ...s, ...change } : s,
+          ),
+        },
+        selected.id + ":" + Object.keys(change).join(","),
+      );
   }
   function addState() {
-    if (!working) return;
+    if (!working || working.states.length >= 12) return;
     let i = working.states.length + 1;
     while (working.states.some((s) => s.id === `state_${i}`)) i++;
     const id = `state_${i}`;
+    const from =
+      selected && !selected.terminal
+        ? selected
+        : working.states.find((s) => s.id === working.initial && !s.terminal);
+    const layout = layoutStates(working);
+    const origin = from ? (from.position ?? layout[from.id]!) : { x: 0, y: 0 };
+    const positions = working.states.map((s) => s.position ?? layout[s.id]!);
+    const position = { x: origin.x + 340, y: origin.y };
+    while (
+      positions.some(
+        (p) =>
+          Math.abs(p.x - position.x) < 260 && Math.abs(p.y - position.y) < 160,
+      )
+    )
+      position.y += 190;
     updateDraft({
       states: [
-        ...working.states,
+        ...working.states.map((s) => ({
+          ...s,
+          position: s.position ?? layout[s.id]!,
+          transitions:
+            s.id === from?.id ? [...s.transitions, id] : s.transitions,
+        })),
         {
           id,
           label: "New state",
-          description:
-            "Describe when the conversation should enter this state.",
+          description: "",
           reply: "What would you like to do next?",
           transitions: [],
           keywords: [],
           terminal: false,
+          position,
         },
       ],
     });
-    setSelectedState(id);
+    selectState(id);
+    notify(
+      from
+        ? `State added and connected from ${from.label}. Set its entry condition.`
+        : "State added. Connect it to your workflow.",
+    );
   }
   function deleteState() {
     if (!working || !selected || selected.id === working.initial) return;
@@ -465,7 +540,7 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
         })),
       cases: working.cases.filter((c) => c.expectedState !== selected.id),
     });
-    setSelectedState(working.initial);
+    selectState(working.initial);
   }
   async function send() {
     if (!project || !text.trim() || busy) return;
@@ -524,6 +599,7 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
       }));
       setConversationId(c.id);
       setSelectedState(result.to);
+      setInspectedState(null);
       setInspectedTurn(null);
       setText("");
     } catch (e) {
@@ -534,6 +610,7 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
   }
   function newConversation() {
     cancelWork();
+    setInspectedState(null);
     setConversationId(null);
     setInspectedTurn(null);
     setText("");
@@ -541,6 +618,13 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
   }
   function saveCase() {
     if (!project || !caseEditor) return;
+    if (
+      caseEditor.turns.length > 5 ||
+      caseEditor.turns.some((turn) => !turn.trim())
+    ) {
+      setError("Add 1–5 messages, one per line, with no empty lines.");
+      return;
+    }
     const updated = {
       ...project,
       cases: [
@@ -581,13 +665,7 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
       projectVersion: project.version,
       createdAt: new Date().toISOString(),
       mode,
-      configSignature: JSON.stringify({
-        states: project.states,
-        instructions: project.instructions,
-        threshold: project.threshold,
-        agent: project.agent,
-        cases: project.cases,
-      }),
+      configSignature: evaluationSignature(project),
       results: [],
     };
     for (let i = 0; i < runProject.cases.length; i++) {
@@ -894,7 +972,7 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
             </span>
           </div>
         </header>
-        {error && (
+        {error && !modalKind && (
           <div className="p-banner p-error" role="alert">
             <span>{error}</span>
             <button aria-label="Dismiss error" onClick={() => setError("")}>
@@ -1289,12 +1367,7 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
                     className={tab === t.id ? "active" : ""}
                     key={t.id}
                     onClick={() => {
-                      if (dirty && t.id !== "build") {
-                        setError(
-                          "Save or discard your workflow changes before testing.",
-                        );
-                        return;
-                      }
+                      if (dirty && t.id !== "build" && !saveProject()) return;
                       setTab(t.id);
                     }}
                   >
@@ -1313,306 +1386,443 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
             </div>
             {tab === "build" && working ? (
               <div className="p-builder">
+                <div className="p-save-bar">
+                  <span>
+                    {dirty
+                      ? "You have unsaved changes."
+                      : cloud
+                        ? sync.status
+                        : "Saved on this device"}
+                  </span>
+                  <div>
+                    <button
+                      className="p-button"
+                      disabled={!dirty}
+                      onClick={() => {
+                        setDraft(structuredClone(project));
+                        setPast([]);
+                        setFuture([]);
+                        lastEdit.current = { key: "", at: 0 };
+                        setError("");
+                      }}
+                    >
+                      Discard
+                    </button>
+                    <button
+                      className="p-button p-primary"
+                      disabled={!dirty}
+                      onClick={saveProject}
+                    >
+                      <Save size={14} />
+                      Save workflow
+                    </button>
+                  </div>
+                </div>
                 <div className="p-builder-canvas">
                   <div className="p-builder-bar">
                     <span>
                       <Workflow size={14} />
-                      {working.states.length} states · click a state to edit
+                      {working.states.length} states ·{" "}
+                      {working.states.reduce(
+                        (n, s) => n + s.transitions.length,
+                        0,
+                      )}{" "}
+                      transitions
                     </span>
-                    <button
-                      className="p-button"
-                      disabled={working.states.length >= 12}
-                      onClick={addState}
-                    >
-                      <Plus size={14} />
-                      Add state
-                    </button>
+                    <div className="p-actions">
+                      <button
+                        className="p-button"
+                        title="Undo (⌘/Ctrl Z)"
+                        aria-label="Undo workflow change"
+                        disabled={!past.length}
+                        onClick={undo}
+                      >
+                        <Undo2 size={15} />
+                      </button>
+                      <button
+                        className="p-button"
+                        title="Redo (⌘/Ctrl Shift Z)"
+                        aria-label="Redo workflow change"
+                        disabled={!future.length}
+                        onClick={redo}
+                      >
+                        <Redo2 size={15} />
+                      </button>
+                      <button
+                        className="p-button"
+                        disabled={working.states.length >= 12}
+                        onClick={addState}
+                      >
+                        <Plus size={14} />
+                        Add state
+                      </button>
+                    </div>
                   </div>
                   <div className="p-build-graph">
                     <ProjectGraph
                       project={working}
                       selected={selected?.id}
-                      onSelect={setSelectedState}
+                      onSelect={selectState}
+                      onPositions={(positions) =>
+                        updateDraft({
+                          states: working.states.map((s) => ({
+                            ...s,
+                            position: positions[s.id] ?? s.position,
+                          })),
+                        })
+                      }
+                      onConnect={(from, to) => {
+                        const positions = layoutStates(working);
+                        updateDraft({
+                          states: working.states.map((s) => ({
+                            ...s,
+                            position: s.position ?? positions[s.id],
+                            transitions:
+                              s.id === from &&
+                              !s.terminal &&
+                              !s.transitions.includes(to)
+                                ? [...s.transitions, to]
+                                : s.transitions,
+                          })),
+                        });
+                        notify(
+                          "Transition connected. Jev uses the destination’s entry condition.",
+                        );
+                      }}
+                      onRemoveTransition={(from, to) =>
+                        updateDraft({
+                          states: working.states.map((s) => ({
+                            ...s,
+                            transitions:
+                              s.id === from
+                                ? s.transitions.filter((t) => t !== to)
+                                : s.transitions,
+                          })),
+                        })
+                      }
                     />
                   </div>
-                  <div className="p-workflow-settings">
-                    <div className="p-form-row">
-                      <label>
-                        Project name
-                        <input
-                          value={working.name}
-                          onChange={(e) =>
-                            updateDraft({ name: e.target.value })
-                          }
-                        />
-                      </label>
-                      <label>
-                        Initial state
-                        <select
-                          value={working.initial}
-                          onChange={(e) =>
-                            updateDraft({ initial: e.target.value })
-                          }
-                        >
-                          {working.states.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                    <label>
-                      Short description
-                      <input
-                        value={working.description}
-                        onChange={(e) =>
-                          updateDraft({ description: e.target.value })
-                        }
-                        maxLength={300}
-                      />
-                    </label>
-                    <label>
-                      What should this workflow accomplish?
-                      <textarea
-                        value={working.instructions}
-                        onChange={(e) =>
-                          updateDraft({ instructions: e.target.value })
-                        }
-                        rows={3}
-                      />
-                    </label>
-                    <div className="p-threshold">
-                      <label>
-                        Transition confidence{" "}
-                        <strong>{percent(working.threshold)}</strong>
-                      </label>
-                      <input
-                        aria-label="Transition confidence"
-                        type="range"
-                        min="0"
-                        max="1"
-                        step=".05"
-                        value={working.threshold}
-                        onChange={(e) =>
-                          updateDraft({ threshold: Number(e.target.value) })
-                        }
-                      />
-                      <small>
-                        Below this threshold, stay in the current state and
-                        gather more context. Tune this with your evals.
-                      </small>
-                    </div>
-                    <div className="p-agent-setting">
-                      <div>
-                        <span className="p-connector-icon openai">
-                          <Sparkles size={21} />
-                        </span>
-                        <div>
-                          <strong>Let an OpenAI agent write the replies</strong>
-                          <p>
-                            Use conversation history and the current state to
-                            respond naturally.
-                          </p>
-                        </div>
-                        <input
-                          aria-label="Enable OpenAI agent"
-                          type="checkbox"
-                          checked={working.agent.enabled}
-                          onChange={(e) =>
-                            updateDraft({
-                              agent: {
-                                ...working.agent,
-                                enabled: e.target.checked,
-                              },
-                            })
-                          }
-                        />
-                      </div>
-                      {working.agent.enabled && (
-                        <>
-                          <label>
-                            OpenAI model
-                            <input
-                              value={working.agent.model}
-                              onChange={(e) =>
-                                updateDraft({
-                                  agent: {
-                                    ...working.agent,
-                                    model: e.target.value,
-                                  },
-                                })
-                              }
-                            />
-                          </label>
-                          <label>
-                            Agent instructions
-                            <textarea
-                              rows={3}
-                              value={working.agent.instructions}
-                              onChange={(e) =>
-                                updateDraft({
-                                  agent: {
-                                    ...working.agent,
-                                    instructions: e.target.value,
-                                  },
-                                })
-                              }
-                            />
-                          </label>
-                          {!connections.openai && (
-                            <p className="p-setup-note">
-                              OpenAI needs a server key before live replies
-                              work. Simulation still uses your written replies.
-                            </p>
-                          )}
-                        </>
-                      )}
-                    </div>
+                  <div className="p-canvas-help">
+                    Drag states to arrange · connect the right dot to a left dot
+                    · click a line to edit
                   </div>
-                  <div className="p-save-bar">
-                    <span>
-                      {dirty
-                        ? "You have unsaved changes."
-                        : "Workflow is saved on this device."}
-                    </span>
-                    <div>
+                  <div className="p-state-list" aria-label="Workflow states">
+                    {working.states.map((s) => (
                       <button
-                        className="p-button"
-                        disabled={!dirty}
-                        onClick={() => setDraft(structuredClone(project))}
+                        key={s.id}
+                        className={s.id === selected?.id ? "active" : ""}
+                        onClick={() => selectState(s.id)}
                       >
-                        Discard
+                        {s.terminal ? <Check size={13} /> : <Zap size={13} />}
+                        {s.label || "Untitled state"}
                       </button>
-                      <button
-                        className="p-button p-primary"
-                        disabled={!dirty}
-                        onClick={saveProject}
-                      >
-                        <Save size={14} />
-                        Save workflow
-                      </button>
-                    </div>
+                    ))}
                   </div>
                 </div>
                 <aside className="p-state-editor">
-                  {selected && (
-                    <>
-                      <div className="p-panel-heading">
-                        <Settings2 size={16} />
-                        State settings<span>{selected.id}</span>
+                  <div className="p-inspector-tabs">
+                    <button
+                      className={editorPanel === "state" ? "active" : ""}
+                      onClick={() => setEditorPanel("state")}
+                    >
+                      State settings
+                    </button>
+                    <button
+                      className={editorPanel === "workflow" ? "active" : ""}
+                      onClick={() => setEditorPanel("workflow")}
+                    >
+                      Workflow settings
+                    </button>
+                  </div>
+                  {editorPanel === "workflow" ? (
+                    <div className="p-workflow-settings">
+                      <div className="p-form-row">
+                        <label>
+                          Project name
+                          <input
+                            value={working.name}
+                            onChange={(e) =>
+                              updateDraft({ name: e.target.value })
+                            }
+                          />
+                        </label>
+                        <label>
+                          Initial state
+                          <select
+                            value={working.initial}
+                            onChange={(e) =>
+                              updateDraft({ initial: e.target.value })
+                            }
+                          >
+                            {working.states.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                       </div>
                       <label>
-                        State name
+                        Short description
                         <input
-                          value={selected.label}
+                          value={working.description}
                           onChange={(e) =>
-                            updateState({ label: e.target.value })
+                            updateDraft({ description: e.target.value })
                           }
+                          maxLength={300}
                         />
                       </label>
                       <label>
-                        When should we enter this state?
+                        What should this workflow accomplish?
                         <textarea
-                          rows={4}
-                          value={selected.description}
+                          value={working.instructions}
                           onChange={(e) =>
-                            updateState({ description: e.target.value })
+                            updateDraft({ instructions: e.target.value })
                           }
+                          rows={3}
                         />
                       </label>
-                      <label>
-                        Reply in this state
-                        <textarea
-                          rows={4}
-                          value={selected.reply}
-                          onChange={(e) =>
-                            updateState({ reply: e.target.value })
-                          }
-                        />
-                      </label>
-                      <p className="p-field-hint">
-                        Used as the reply in simulation and when the OpenAI
-                        agent is off. With an agent, this becomes response
-                        guidance.
-                      </p>
-                      <label className="p-checkbox-label">
-                        <input
-                          type="checkbox"
-                          checked={selected.terminal}
-                          onChange={(e) =>
-                            updateState({
-                              terminal: e.target.checked,
-                              transitions: e.target.checked
-                                ? []
-                                : selected.transitions,
-                            })
-                          }
-                        />
-                        End the conversation here
-                      </label>
-                      {!selected.terminal && (
-                        <fieldset>
-                          <legend>Can move to</legend>
-                          {working.states
-                            .filter((s) => s.id !== selected.id)
-                            .map((s) => (
-                              <label className="p-checkbox-label" key={s.id}>
-                                <input
-                                  type="checkbox"
-                                  checked={selected.transitions.includes(s.id)}
-                                  onChange={(e) =>
-                                    updateState({
-                                      transitions: e.target.checked
-                                        ? [...selected.transitions, s.id]
-                                        : selected.transitions.filter(
-                                            (t) => t !== s.id,
-                                          ),
-                                    })
-                                  }
-                                />
-                                {s.label}
-                              </label>
-                            ))}
-                          <p className="p-field-hint">
-                            Jev chooses only among these states. Staying put is
-                            always allowed.
-                          </p>
-                        </fieldset>
-                      )}
-                      <details>
-                        <summary>Simulation hints</summary>
+                      <div className="p-threshold">
                         <label>
-                          Match these words (comma separated)
+                          Transition confidence{" "}
+                          <strong>{percent(working.threshold)}</strong>
+                        </label>
+                        <input
+                          aria-label="Transition confidence"
+                          type="range"
+                          min="0"
+                          max="1"
+                          step=".05"
+                          value={working.threshold}
+                          onChange={(e) =>
+                            updateDraft({ threshold: Number(e.target.value) })
+                          }
+                        />
+                        <small>
+                          Below this threshold, stay in the current state and
+                          gather more context. Tune this with your evals.
+                        </small>
+                      </div>
+                      <div className="p-agent-setting">
+                        <div>
+                          <span className="p-connector-icon openai">
+                            <Sparkles size={21} />
+                          </span>
+                          <div>
+                            <strong>
+                              Let an OpenAI agent write the replies
+                            </strong>
+                            <p>
+                              Use conversation history and the current state to
+                              respond naturally.
+                            </p>
+                          </div>
                           <input
-                            value={selected.keywords.join(", ")}
+                            aria-label="Enable OpenAI agent"
+                            type="checkbox"
+                            checked={working.agent.enabled}
                             onChange={(e) =>
-                              updateState({
-                                keywords: e.target.value
-                                  .split(",")
-                                  .map((v) => v.trim())
-                                  .filter(Boolean),
+                              updateDraft({
+                                agent: {
+                                  ...working.agent,
+                                  enabled: e.target.checked,
+                                },
                               })
+                            }
+                          />
+                        </div>
+                        {working.agent.enabled && (
+                          <>
+                            <label>
+                              OpenAI model
+                              <input
+                                value={working.agent.model}
+                                onChange={(e) =>
+                                  updateDraft({
+                                    agent: {
+                                      ...working.agent,
+                                      model: e.target.value,
+                                    },
+                                  })
+                                }
+                              />
+                            </label>
+                            <label>
+                              Agent instructions
+                              <textarea
+                                rows={3}
+                                value={working.agent.instructions}
+                                onChange={(e) =>
+                                  updateDraft({
+                                    agent: {
+                                      ...working.agent,
+                                      instructions: e.target.value,
+                                    },
+                                  })
+                                }
+                              />
+                            </label>
+                            {!connections.openai && (
+                              <p className="p-setup-note">
+                                OpenAI needs a server key before live replies
+                                work. Simulation still uses your written
+                                replies.
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    selected && (
+                      <>
+                        <div className="p-panel-heading">
+                          <Settings2 size={16} />
+                          {selected.label || "Untitled state"}
+                          <span>{selected.id}</span>
+                        </div>
+                        {selected.id !== working.initial &&
+                          !working.states.some((s) =>
+                            s.transitions.includes(selected.id),
+                          ) && (
+                            <p className="p-state-warning">
+                              No incoming transitions. Connect this state from
+                              another state so conversations can reach it.
+                            </p>
+                          )}
+                        {!selected.terminal &&
+                          selected.transitions.length === 0 && (
+                            <p className="p-state-warning">
+                              This state has no outgoing transitions. Connect a
+                              next step, or mark it as an end state.
+                            </p>
+                          )}
+                        <label>
+                          State name
+                          <input
+                            value={selected.label}
+                            onChange={(e) =>
+                              updateState({ label: e.target.value })
+                            }
+                          />
+                        </label>
+                        <label>
+                          When should we enter this state?
+                          <textarea
+                            rows={4}
+                            placeholder="e.g. The customer asks about a charge or refund."
+                            value={selected.description}
+                            onChange={(e) =>
+                              updateState({ description: e.target.value })
+                            }
+                          />
+                        </label>
+                        <label>
+                          Reply in this state
+                          <textarea
+                            rows={4}
+                            value={selected.reply}
+                            onChange={(e) =>
+                              updateState({ reply: e.target.value })
                             }
                           />
                         </label>
                         <p className="p-field-hint">
-                          Simple keyword fixtures for simulation. Live Jev uses
-                          the state description and full conversation instead.
+                          Used as the reply in simulation and when the OpenAI
+                          agent is off. With an agent, this becomes response
+                          guidance.
                         </p>
-                      </details>
-                      <button
-                        className="p-delete-state"
-                        disabled={
-                          selected.id === working.initial ||
-                          working.states.length <= 2
-                        }
-                        onClick={deleteState}
-                      >
-                        <Trash2 size={14} />
-                        Remove state
-                      </button>
-                    </>
+                        <label className="p-checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={selected.terminal}
+                            onChange={(e) =>
+                              updateState({
+                                terminal: e.target.checked,
+                                transitions: e.target.checked
+                                  ? []
+                                  : selected.transitions,
+                              })
+                            }
+                          />
+                          End the conversation here
+                        </label>
+                        {!selected.terminal && (
+                          <fieldset>
+                            <legend>Can move to</legend>
+                            {working.states
+                              .filter((s) => s.id !== selected.id)
+                              .map((s) => (
+                                <label className="p-checkbox-label" key={s.id}>
+                                  <input
+                                    type="checkbox"
+                                    checked={selected.transitions.includes(
+                                      s.id,
+                                    )}
+                                    onChange={(e) =>
+                                      updateState({
+                                        transitions: e.target.checked
+                                          ? [...selected.transitions, s.id]
+                                          : selected.transitions.filter(
+                                              (t) => t !== s.id,
+                                            ),
+                                      })
+                                    }
+                                  />
+                                  {s.label}
+                                </label>
+                              ))}
+                            <p className="p-field-hint">
+                              Jev chooses only among these states. Staying put
+                              is always allowed.
+                            </p>
+                          </fieldset>
+                        )}
+                        <details>
+                          <summary>Simulation hints</summary>
+                          <label>
+                            Match these words (comma separated)
+                            <input
+                              key={
+                                selected.id + ":" + selected.keywords.join(",")
+                              }
+                              defaultValue={selected.keywords.join(", ")}
+                              onBlur={(e) =>
+                                updateState({
+                                  keywords: e.target.value
+                                    .split(",")
+                                    .map((v) => v.trim())
+                                    .filter(Boolean),
+                                })
+                              }
+                            />
+                          </label>
+                          <p className="p-field-hint">
+                            Simple keyword fixtures for simulation. Live Jev
+                            uses the state description and full conversation
+                            instead.
+                          </p>
+                        </details>
+                        <button
+                          className="p-delete-state"
+                          disabled={
+                            selected.id === working.initial ||
+                            working.states.length <= 2
+                          }
+                          title={
+                            selected.id === working.initial
+                              ? "Choose a different initial state in Workflow settings first"
+                              : working.states.length <= 2
+                                ? "A workflow needs at least two states"
+                                : "Remove this state and its transitions. Undo is available."
+                          }
+                          onClick={deleteState}
+                        >
+                          <Trash2 size={14} />
+                          Remove state
+                        </button>
+                      </>
+                    )
                   )}
                 </aside>
               </div>
@@ -1668,35 +1878,6 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
                         <Workflow size={18} />
                       </span>
                       <strong>{project.name}</strong>
-                      <button
-                        title="Delete project"
-                        aria-label="Delete project"
-                        onClick={() => {
-                          if (
-                            !window.confirm(
-                              `Delete ${project.name} and its saved conversations and evaluations? Export it first if you need a copy.`,
-                            )
-                          )
-                            return;
-                          cancelWork();
-                          setLibrary((prev) => ({
-                            ...prev,
-                            projects: prev.projects.filter(
-                              (p) => p.id !== project.id,
-                            ),
-                            conversations: prev.conversations.filter(
-                              (c) => c.projectId !== project.id,
-                            ),
-                            reports: prev.reports.filter(
-                              (r) => r.projectId !== project.id,
-                            ),
-                          }));
-                          setProjectId(null);
-                          setDraft(null);
-                        }}
-                      >
-                        <Trash2 size={15} />
-                      </button>
                       <p>
                         {
                           conversationProject!.states.find(
@@ -1730,9 +1911,10 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
                           {m.role === "assistant" && (
                             <button
                               className="p-turn-pill"
-                              onClick={() =>
-                                setInspectedTurn(Math.floor(i / 2))
-                              }
+                              onClick={() => {
+                                setInspectedTurn(Math.floor(i / 2));
+                                setInspectedState(null);
+                              }}
                             >
                               <GitBranch size={11} />
                               {
@@ -1763,6 +1945,60 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
                     <div ref={chatEnd} />
                   </div>
                   <div className="p-chat-compose">
+                    {!activeState?.terminal &&
+                      (conversation?.mode ?? mode) === "mock" && (
+                        <div className="p-simulation-hints">
+                          <small>
+                            Simulation matches keywords. Try one below, or
+                            switch to Live Jev for natural language.
+                          </small>
+                          <div>
+                            {activeState?.transitions
+                              .map((id) =>
+                                conversationProject!.states.find(
+                                  (s) => s.id === id,
+                                ),
+                              )
+                              .filter((s) => !!s?.keywords.length)
+                              .map((s) => (
+                                <button
+                                  type="button"
+                                  key={s!.id}
+                                  disabled={busy}
+                                  onClick={() => {
+                                    setText(s!.keywords[0]!);
+                                    document
+                                      .querySelector<HTMLTextAreaElement>(
+                                        '[aria-label="Conversation message"]',
+                                      )
+                                      ?.focus();
+                                  }}
+                                >
+                                  {s!.keywords[0]} <ArrowRight size={11} />{" "}
+                                  {s!.label}
+                                </button>
+                              ))}
+                          </div>
+                          {activeState?.transitions.length === 0 && (
+                            <small>
+                              This state has no next step. Add a transition in
+                              Build to continue the workflow.
+                            </small>
+                          )}
+                          {!!activeState?.transitions.length &&
+                            activeState.transitions.every(
+                              (id) =>
+                                !conversationProject!.states.find(
+                                  (s) => s.id === id,
+                                )?.keywords.length,
+                            ) && (
+                              <small>
+                                Add simulation hints to the next states in Build
+                                to test these transitions.
+                              </small>
+                            )}
+                        </div>
+                      )}
                     {activeState?.terminal ? (
                       <div className="p-chat-ended">
                         <Check size={18} />
@@ -1787,9 +2023,14 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
                           rows={2}
                           maxLength={4000}
                           value={text}
+                          disabled={busy}
                           onChange={(e) => setText(e.target.value)}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
+                            if (
+                              e.key === "Enter" &&
+                              !e.shiftKey &&
+                              !e.nativeEvent.isComposing
+                            ) {
                               e.preventDefault();
                               void send();
                             }
@@ -1844,9 +2085,55 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
                     <ProjectGraph
                       project={conversationProject!}
                       current={viewedTurn?.to ?? currentState}
-                      onSelect={setSelectedState}
+                      selected={inspectedState ?? undefined}
+                      transition={viewedTurn}
+                      onSelect={setInspectedState}
                     />
                   </div>
+                  {inspectedState && (
+                    <div className="p-state-peek">
+                      <button
+                        aria-label="Close state inspection"
+                        onClick={() => setInspectedState(null)}
+                      >
+                        <X size={14} />
+                      </button>
+                      <span className="p-kicker">INSPECTING STATE</span>
+                      <h3>
+                        {
+                          conversationProject!.states.find(
+                            (s) => s.id === inspectedState,
+                          )?.label
+                        }
+                      </h3>
+                      <p>
+                        {conversationProject!.states.find(
+                          (s) => s.id === inspectedState,
+                        )?.description || "No entry condition yet."}
+                      </p>
+                      <small>
+                        Next:{" "}
+                        {conversationProject!.states
+                          .find((s) => s.id === inspectedState)
+                          ?.transitions.map(
+                            (id) =>
+                              conversationProject!.states.find(
+                                (s) => s.id === id,
+                              )?.label,
+                          )
+                          .join(", ") || "No outgoing transitions"}
+                      </small>
+                      <button
+                        className="p-text-button"
+                        onClick={() => {
+                          selectState(inspectedState);
+                          setTab("build");
+                        }}
+                      >
+                        Edit in builder <ArrowRight size={13} />
+                      </button>
+                    </div>
+                  )}
                   <div className="p-current-state">
                     <span className="p-kicker">
                       {inspectedTurn !== null
@@ -2264,7 +2551,12 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
         )}
       </div>
       {create && (
-        <div className="p-modal-backdrop">
+        <div
+          className="p-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Create a project"
+        >
           <form
             className="p-modal p-create-modal"
             onSubmit={(e) => {
@@ -2327,7 +2619,12 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
         </div>
       )}
       {caseEditor && project && (
-        <div className="p-modal-backdrop">
+        <div
+          className="p-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Edit test case"
+        >
           <form
             className="p-modal"
             onSubmit={(e) => {
@@ -2345,6 +2642,11 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
             </button>
             <span className="p-kicker">A REPEATABLE EXPECTATION</span>
             <h2>Edit test case</h2>
+            {error && (
+              <p role="alert" className="p-inline-error">
+                {error}
+              </p>
+            )}
             <label>
               Case name
               <input
@@ -2411,7 +2713,12 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
         </div>
       )}
       {detail && (
-        <div className="p-modal-backdrop">
+        <div
+          className="p-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Evaluation result"
+        >
           <div className="p-modal p-detail-modal">
             <button
               className="p-modal-close"
@@ -2447,7 +2754,12 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
         </div>
       )}
       {setupProvider && (
-        <div className="p-modal-backdrop">
+        <div
+          className="p-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Connection setup"
+        >
           <div className="p-modal">
             <button
               className="p-modal-close"
@@ -2460,6 +2772,11 @@ function WorkspaceProduct({ cloud }: { cloud: CloudWorkspace | undefined }) {
               CONNECT {setupProvider === "jev" ? "JEV" : "OPENAI"}
             </span>
             <h2>One key. Kept server-side.</h2>
+            {error && (
+              <p role="alert" className="p-inline-error">
+                {error}
+              </p>
+            )}
             {cloud ? (
               <>
                 <p>

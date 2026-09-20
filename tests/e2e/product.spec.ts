@@ -66,6 +66,9 @@ test("examples are separate, editable copies support conversations and multi-tur
   );
   await page.getByRole("button", { name: "Close result" }).click();
   await page.getByRole("button", { name: "Build", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Workflow settings", exact: true })
+    .click();
   await page.getByLabel("Project name", { exact: true }).fill("Renamed agent");
   await page.getByRole("button", { name: "Save workflow" }).click();
   await expect(
