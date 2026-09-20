@@ -50,11 +50,11 @@ Every case runs independently from the initial state. Do not add user turns afte
 
 ## 5. Switch to live Jev
 
-Live connections require your own [local or protected deployment](SELF_HOSTING.md). Put `TYPESAFE_API_KEY` in its server environment, restart, and test it in **Connections**. Select **Live Jev** and try paraphrases that do not contain your simulation keywords.
+On the public studio, choose **Connections → Connect Jev**, enter your own TypeSafe API key, and accept the usage notice. Keys stay in this tab’s memory and pass through the server for provider requests; reload or Disconnect clears them. Live usage is charged to your provider account. For a [local or protected deployment](SELF_HOSTING.md), you can alternatively put `TYPESAFE_API_KEY` in its server environment, restart, and test it in **Connections**. Select **Live Jev** and try paraphrases that do not contain your simulation keywords.
 
 Use the inspection panel to understand disagreements. Was the needed destination connected? Were its criteria specific? Was relevant context in the conversation? Did the selected option fail your threshold? Update the workflow or add a regression case based on what you observe.
 
-You can optionally enable generated replies in Workflow settings with a server-side OpenAI key. This changes reply generation; Jev still controls the state choice. No external business actions or tools are executed.
+You can optionally enable generated replies in Workflow settings after connecting your OpenAI key (or configuring a server-side key locally). This changes reply generation; Jev still controls the state choice. No external business actions or tools are executed.
 
 ## 6. Keep and automate your work
 

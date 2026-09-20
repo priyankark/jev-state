@@ -51,15 +51,19 @@ Open **[localhost:5173](http://localhost:5173)**.
 
 ## Simulation and live models
 
-| Mode | Routing | Replies | Provider requests |
-| --- | --- | --- | --- |
-| Simulation | First matching destination keyword in transition order; otherwise stay | State reply text | None |
-| Live Jev | TypeSafe Choice over allowed destinations plus `stay` | State reply text | TypeSafe |
-| Live Jev + generated replies | Same Jev routing | OpenAI Responses using the history and resulting state | TypeSafe and OpenAI |
+| Mode                         | Routing                                                                | Replies                                                | Provider requests   |
+| ---------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------ | ------------------- |
+| Simulation                   | First matching destination keyword in transition order; otherwise stay | State reply text                                       | None                |
+| Live Jev                     | TypeSafe Choice over allowed destinations plus `stay`                  | State reply text                                       | TypeSafe            |
+| Live Jev + generated replies | Same Jev routing                                                       | OpenAI Responses using the history and resulting state | TypeSafe and OpenAI |
 
-Simulation is deterministic and useful for testing the wiring. Its confidence values are fixtures, **not estimates of model accuracy**. Simulation requests still go to the installation's server; on the public demo, that is the hosted server. The [public demo](https://jev-state.vercel.app) only permits simulation.
+Simulation is deterministic and useful for testing the wiring. Its confidence values are fixtures, **not estimates of model accuracy**. Simulation requests still go to the installation's server; on the public demo, that is the hosted server. The [public studio](https://jev-state.vercel.app) starts in simulation and also supports your own provider keys.
 
-For live decisions, put your key in the ignored `.env.local` file:
+On the hosted studio, open **Connections → Connect Jev**, paste your TypeSafe API key, and accept the provider-usage notice. Verification checks account access without generating a reply. Then explicitly choose **Live Jev** in Converse or Evaluate. Add an OpenAI key in Connections only if you want generated replies.
+
+Personal keys stay in **this tab’s memory**. Reloading, closing the tab, or choosing **Disconnect and forget keys** clears them. They are never saved in localStorage, sessionStorage, cookies, exports, or a server database. Checks and live requests send keys through the same-origin server to the relevant provider; trust that installation's operator or run your own copy. Keys are not sent with simulation requests. Live usage is billed to the connected provider account. No Upstash, hosted key store, or subscription is needed.
+
+For local development or CLI live decisions, put your key in the ignored `.env.local` file:
 
 ```dotenv
 TYPESAFE_API_KEY=your-typesafe-key
@@ -75,7 +79,7 @@ npm run smoke:jev  # one small inference request; consumes provider usage
 
 Optional generated replies need `OPENAI_API_KEY` in the same server environment. In **Build → Workflow settings**, enable generated replies and choose the model and instructions. The model must be available to your OpenAI account. The connector calls the Responses API with `store: false`; it does not run tools, remote Agents SDK services, or MCP connectors.
 
-Provider credentials never belong in `VITE_*` variables, project JSON, workflow instructions, screenshots, or browser storage. On Vercel, live providers additionally require `STUDIO_ACCESS_TOKEN`. See [deployment and configuration](docs/SELF_HOSTING.md).
+Provider credentials never belong in `VITE_*` variables, project JSON, workflow instructions, screenshots, or browser storage. On Vercel, operator-supplied server keys require `STUDIO_ACCESS_TOKEN`. Personal keys can be enabled separately with `STUDIO_BYOK=1`; `STUDIO_PUBLIC_DEMO=1` disables all live calls. See [deployment and configuration](docs/SELF_HOSTING.md).
 
 ## How a turn works
 
@@ -134,10 +138,10 @@ CI can run a simulation suite with no secrets:
 
 The repository contains two related surfaces:
 
-| Surface | Purpose | Example |
-| --- | --- | --- |
-| Studio project schema + `executeTurn` | Editable, multi-turn conversation workflows | [JSON examples](examples/workflows), [API guide](docs/DEVELOPMENT.md) |
-| `defineDecision` + `defineMachine` | Typed, code-authored single-decision actors with Choice, Noul, and Score | [Support routing](examples/support-routing/machine.ts) |
+| Surface                               | Purpose                                                                  | Example                                                               |
+| ------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| Studio project schema + `executeTurn` | Editable, multi-turn conversation workflows                              | [JSON examples](examples/workflows), [API guide](docs/DEVELOPMENT.md) |
+| `defineDecision` + `defineMachine`    | Typed, code-authored single-decision actors with Choice, Noul, and Score | [Support routing](examples/support-routing/machine.ts)                |
 
 ```sh
 npm run example
@@ -167,7 +171,7 @@ npx playwright install chrome         # first-time browser setup
 npm run test:e2e                       # real Chrome interactions, desktop and mobile viewport
 ```
 
-The default tests do not call paid model services. Connector tests exercise SDK requests against controlled HTTP responses. Browser tests drag nodes and connect handles, save/reload, undo, inspect conversations, run evaluations, restore backups, and test storage failures and keyboard focus.
+The default tests do not call paid model services. Connector tests exercise SDK requests against controlled HTTP responses. Browser tests drag nodes and connect handles, save/reload, undo, inspect conversations, run evaluations, restore backups, and test storage failures, keyboard focus, personal-key isolation, reload/disconnect, and credential-free exports.
 
 The live checks are explicit opt-ins. An actual Jev run and a mocked OpenAI contract test cover different things; the latter does not verify account access or model response quality. See [validation notes](docs/UX_REVIEW.md).
 

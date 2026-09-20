@@ -1,13 +1,28 @@
 import express from "express";
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
   projectSchema,
   turnRequestSchema,
   evalCaseSchema,
 } from "../packages/core/src/studio.js";
-import { executeTurn, evaluateCase, serverConnectors } from "./conversation.js";
+import {
+  executeTurn,
+  evaluateCase,
+  serverConnectors,
+  createConnectorClients,
+  type Connectors,
+} from "./conversation.js";
 import { liveEnabled, liveDisabledMessage } from "./access.js";
+import {
+  personalConnectionsEnabled,
+  personalKeys,
+  limitConnections,
+  providerSchema,
+  providerKeySchema,
+  ConnectionError,
+  type Provider,
+} from "./personal-connections.js";
 
 function token() {
   return process.env.STUDIO_ACCESS_TOKEN;
@@ -36,7 +51,34 @@ export function authorized(req: express.Request) {
     )
   );
 }
-export function createStudioApi() {
+export function createStudioApi(
+  options: {
+    verify?: (provider: Provider, key: string) => Promise<void>;
+    clients?: typeof createConnectorClients;
+  } = {},
+) {
+  const byok = personalConnectionsEnabled();
+  const clients = options.clients ?? createConnectorClients;
+  async function resolveConnectors(req: express.Request): Promise<Connectors> {
+    const keys = personalKeys(req);
+    if (keys.jev || keys.openai) {
+      if (!byok)
+        throw new ConnectionError(
+          403,
+          "Personal connections are disabled on this installation.",
+        );
+      limitConnections(req, "live");
+      return clients(keys);
+    }
+    if (!liveEnabled())
+      throw new ConnectionError(
+        byok ? 401 : 403,
+        byok
+          ? "Connect your Jev key in Connections to run live."
+          : liveDisabledMessage,
+      );
+    return serverConnectors();
+  }
   const router = express.Router();
   router.use(express.json({ limit: "192kb" }));
   router.use((req, res, next) => {
@@ -102,21 +144,103 @@ export function createStudioApi() {
     }
     next();
   });
-  router.get("/connections", (_req, res) =>
+  // Custom header + JSON prevents cross-site form submissions and forces CORS preflight.
+  router.use((req, res, next) => {
+    if (
+      byok &&
+      req.method !== "GET" &&
+      (req.path.startsWith("/connections") || req.body?.mode === "live") &&
+      req.headers["x-jev-request"] !== "1"
+    ) {
+      res
+        .status(403)
+        .json({ error: "Use the studio to manage your connections." });
+      return;
+    }
+    next();
+  });
+  router.get("/connections", (_req, res) => {
+    const source = (provider: Provider) =>
+      liveEnabled() &&
+      process.env[
+        provider === "jev" ? "TYPESAFE_API_KEY" : "OPENAI_API_KEY"
+      ]?.trim()
+        ? "server"
+        : null;
     res.json({
-      jev: liveEnabled() && !!process.env.TYPESAFE_API_KEY?.trim(),
-      openai: liveEnabled() && !!process.env.OPENAI_API_KEY?.trim(),
-      liveEnabled: liveEnabled(),
+      jev: !!source("jev"),
+      openai: !!source("openai"),
+      sources: { jev: source("jev"), openai: source("openai") },
+      byok,
+      liveEnabled: byok || liveEnabled(),
       model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-    }),
-  );
+    });
+  });
+  router.post("/connections/key", async (req, res) => {
+    if (!byok) {
+      res
+        .status(403)
+        .json({
+          error: "Personal connections are not enabled on this installation.",
+        });
+      return;
+    }
+    const parsed = z
+      .object({
+        provider: providerSchema,
+        key: providerKeySchema,
+        consent: z.literal(true),
+      })
+      .strict()
+      .safeParse(req.body);
+    delete req.body?.key;
+    if (!parsed.success) {
+      res
+        .status(400)
+        .json({
+          error: "Enter a valid API key and accept the connection notice.",
+        });
+      return;
+    }
+    const controller = new AbortController();
+    res.on("close", () => {
+      if (!res.writableEnded) controller.abort();
+    });
+    try {
+      limitConnections(req, "connect");
+      const { provider, key } = parsed.data;
+      if (options.verify) await options.verify(provider, key);
+      else {
+        const connector = clients({ [provider]: key });
+        const signal = AbortSignal.any([
+          controller.signal,
+          AbortSignal.timeout(12000),
+        ]);
+        if (provider === "jev") await connector.jev!.models.list({ signal });
+        else await connector.openai!.models.list({ signal });
+      }
+      if (!res.destroyed) res.json({ ok: true });
+    } catch (error) {
+      if (!res.destroyed)
+        res
+          .status(error instanceof ConnectionError ? error.status : 502)
+          .json({
+            error:
+              error instanceof ConnectionError
+                ? error.message
+                : "Could not verify this key. Check its provider, permissions, and account access, then try again.",
+          });
+    } finally {
+      parsed.data.key = "";
+    }
+  });
   router.post("/connections/test", async (req, res) => {
-    if (!liveEnabled()) {
+    if (!liveEnabled() && !byok) {
       res.status(403).json({ error: liveDisabledMessage });
       return;
     }
     try {
-      const connectors = serverConnectors();
+      const connectors = await resolveConnectors(req);
       if (req.body?.provider === "jev") {
         if (!connectors.jev)
           throw new Error("Set TYPESAFE_API_KEY in your server environment.");
@@ -128,10 +252,12 @@ export function createStudioApi() {
         await connectors.openai.models.list();
         res.json({ ok: true });
       } else res.status(400).json({ error: "Unknown provider" });
-    } catch {
-      res.status(502).json({
+    } catch (error) {
+      res.status(error instanceof ConnectionError ? error.status : 502).json({
         error:
-          "Connection check failed. Confirm the server key and provider account access.",
+          error instanceof ConnectionError
+            ? error.message
+            : "Connection check failed. Reconnect and check your provider account access.",
       });
     }
   });
@@ -143,7 +269,7 @@ export function createStudioApi() {
       });
       return;
     }
-    if (parsed.data.mode === "live" && !liveEnabled()) {
+    if (parsed.data.mode === "live" && !liveEnabled() && !byok) {
       res.status(403).json({ error: liveDisabledMessage });
       return;
     }
@@ -154,12 +280,15 @@ export function createStudioApi() {
     try {
       const result = await executeTurn(
         parsed.data,
-        serverConnectors(),
+        parsed.data.mode === "live" ? await resolveConnectors(req) : {},
         AbortSignal.any([controller.signal, AbortSignal.timeout(50000)]),
       );
       if (!res.destroyed) res.json(result);
     } catch (e) {
-      if (!res.destroyed) res.status(502).json({ error: safeError(e) });
+      if (!res.destroyed)
+        res
+          .status(e instanceof ConnectionError ? e.status : 502)
+          .json({ error: safeError(e) });
     }
   });
   router.post("/eval-case", async (req, res) => {
@@ -186,7 +315,7 @@ export function createStudioApi() {
         .json({ error: "The expected state does not exist in this workflow." });
       return;
     }
-    if (parsed.data.mode === "live" && !liveEnabled()) {
+    if (parsed.data.mode === "live" && !liveEnabled() && !byok) {
       res.status(403).json({ error: liveDisabledMessage });
       return;
     }
@@ -200,17 +329,21 @@ export function createStudioApi() {
         project,
         test,
         mode,
-        serverConnectors(),
+        mode === "live" ? await resolveConnectors(req) : {},
         AbortSignal.any([controller.signal, AbortSignal.timeout(50000)]),
       );
       if (!res.destroyed) res.json(result);
     } catch (e) {
-      if (!res.destroyed) res.status(502).json({ error: safeError(e) });
+      if (!res.destroyed)
+        res
+          .status(e instanceof ConnectionError ? e.status : 502)
+          .json({ error: safeError(e) });
     }
   });
   return router;
 }
 function safeError(error: unknown) {
+  if (error instanceof ConnectionError) return error.message;
   const message = error instanceof Error ? error.message : "";
   if (
     [
@@ -224,7 +357,7 @@ function safeError(error: unknown) {
   const status =
     error && typeof error === "object" && "status" in error ? error.status : 0;
   if (status === 401 || status === 403)
-    return "The provider rejected the server credentials. Check Connections.";
+    return "The provider rejected the credentials. Check Connections.";
   if (status === 429)
     return "The provider rate or usage limit was reached. Wait a moment or check your account.";
   return "The turn could not complete. Your conversation is unchanged. Check the provider connection and try again.";

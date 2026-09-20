@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { ProjectGraph, layoutStates } from "./ProjectGraph.js";
+import { ConnectionSetup } from "./ConnectionSetup.js";
+import {
+  personalKeyHeaders,
+  personalKeyStatus,
+  rememberKey,
+  forgetKeys,
+} from "./personal-keys.js";
 import {
   diagnoseProject,
   evaluationCoverage,
@@ -64,6 +71,11 @@ type ConnectionState = {
   openai: boolean;
   model: string;
   liveEnabled?: boolean;
+  byok?: boolean;
+  sources?: {
+    jev: "personal" | "server" | null;
+    openai: "personal" | "server" | null;
+  };
 };
 type Library = {
   projects: Project[];
@@ -86,6 +98,13 @@ async function request<T>(
   body?: unknown,
   signal?: AbortSignal,
 ): Promise<T> {
+  const usesProvider =
+    path === "/connections/test" ||
+    ((path === "/turn" || path === "/eval-case") &&
+      !!body &&
+      typeof body === "object" &&
+      "mode" in body &&
+      body.mode === "live");
   const response = await fetch(`/api/studio${path}`, {
     ...(body === undefined
       ? {}
@@ -94,7 +113,11 @@ async function request<T>(
 
           body: JSON.stringify(body),
         }),
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Jev-Request": "1",
+      ...(usesProvider ? personalKeyHeaders() : {}),
+    },
     ...(signal ? { signal } : {}),
   });
   const data = await response.json();
@@ -163,6 +186,7 @@ export function Product() {
     [detail, setDetail] = useState<CaseResult | null>(null);
   const [setupProvider, setSetupProvider] = useState<string | null>(null),
     [connectionTest, setConnectionTest] = useState<string | null>(null);
+  const [connectionBusy, setConnectionBusy] = useState(false);
   const importRef = useRef<HTMLInputElement>(null),
     restoreRef = useRef<HTMLInputElement>(null),
     controller = useRef<AbortController | null>(null),
@@ -205,6 +229,16 @@ export function Product() {
     if (session) void refreshConnections();
   }, [session]);
   useEffect(() => {
+    if (!session) return;
+    const refresh = () => void refreshConnections();
+    window.addEventListener("focus", refresh);
+    window.addEventListener("pageshow", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("pageshow", refresh);
+    };
+  }, [session]);
+  useEffect(() => {
     if (storageBlocked) return;
     try {
       localStorage.setItem(KEY, JSON.stringify(library));
@@ -232,10 +266,40 @@ export function Product() {
   useEffect(() => () => controller.current?.abort(), []);
   async function refreshConnections() {
     try {
-      setConnections(await request<ConnectionState>("/connections"));
+      const available = await request<ConnectionState>("/connections");
+      const own = personalKeyStatus();
+      setConnections(
+        own.jev || own.openai
+          ? {
+              ...available,
+              ...own,
+              sources: {
+                jev: own.jev ? "personal" : null,
+                openai: own.openai ? "personal" : null,
+              },
+            }
+          : available,
+      );
     } catch (e) {
       setError((e as Error).message);
     }
+  }
+  function disconnectProviders() {
+    cancelWork();
+    forgetKeys();
+    setMode("mock");
+    setConversationId(null);
+    setInspectedTurn(null);
+    setConnections((previous) => ({
+      ...previous,
+      jev: false,
+      openai: false,
+      sources: { jev: null, openai: null },
+    }));
+    notify(
+      "Personal keys cleared from this tab. Your saved work is unchanged.",
+    );
+    void refreshConnections();
   }
   function notify(message: string) {
     setNotice(message);
@@ -418,7 +482,7 @@ export function Product() {
       (firstInput ?? focusable()[0])?.focus();
     });
     const keys = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !connectionBusy) {
         e.preventDefault();
         setCreate(false);
         setCaseEditor(null);
@@ -456,7 +520,7 @@ export function Product() {
       document.body.style.overflow = overflow;
       previous?.focus();
     };
-  }, [modalKind]);
+  }, [modalKind, connectionBusy]);
   function updateState(change: Partial<WorkflowState>) {
     if (working && selected)
       updateDraft(
@@ -1071,6 +1135,28 @@ export function Product() {
         />
         {page === "connections" ? (
           <div className="p-page">
+            {connections.byok && (
+              <div className="p-connection-intro">
+                <div>
+                  <strong>Your keys. Your usage. No subscription.</strong>
+                  <p>
+                    Try simulation for free, or connect your provider account
+                    for live runs. Keys are kept only in this tab’s memory and
+                    cleared on reload.
+                  </p>
+                </div>
+                {(connections.sources?.jev === "personal" ||
+                  connections.sources?.openai === "personal") && (
+                  <button
+                    className="p-button"
+                    disabled={connectionBusy}
+                    onClick={disconnectProviders}
+                  >
+                    Disconnect and forget keys
+                  </button>
+                )}
+              </div>
+            )}
             {connections.liveEnabled === false && (
               <div className="p-report-stale">
                 This is a simulation-only demo. To use live providers, run your
@@ -1127,13 +1213,22 @@ export function Product() {
                     <span
                       className={c.connected ? "p-badge p-green" : "p-badge"}
                     >
-                      {c.connected ? "Configured" : "Not connected"}
+                      {c.connected
+                        ? connections.sources?.[c.id as "jev" | "openai"] ===
+                          "personal"
+                          ? "Connected · this tab"
+                          : "Server configured"
+                        : "Not connected"}
                     </span>
-                    <span>Server-side credentials</span>
+                    <span>
+                      {connections.byok
+                        ? "Your provider bills live usage"
+                        : "Server-side credentials"}
+                    </span>
                   </div>
                   <div className="p-card-actions">
                     <button
-                      className="p-button p-primary"
+                      className="p-button"
                       disabled={!c.connected || !!connectionTest}
                       onClick={() => void testConnection(c.id)}
                     >
@@ -1145,12 +1240,17 @@ export function Product() {
                       Test connection
                     </button>
                     <button
-                      className="p-button"
+                      className="p-button p-primary"
                       onClick={() => {
                         setSetupProvider(c.id);
                       }}
                     >
-                      Set up <ArrowUpRight size={13} />
+                      {connections.byok
+                        ? c.connected
+                          ? "Replace key"
+                          : `Connect ${c.id === "jev" ? "Jev" : "OpenAI"}`
+                        : "Set up"}{" "}
+                      <ArrowUpRight size={13} />
                     </button>
                   </div>
                 </article>
@@ -1161,9 +1261,9 @@ export function Product() {
               <div>
                 <h3>Your keys stay behind the scenes.</h3>
                 <p>
-                  Connections use server environment variables. Keys are never
-                  included in project files, transcripts, browser storage, or
-                  evaluation reports.
+                  {connections.byok
+                    ? "Personal keys live in this tab's memory. Provider requests pass through this server; keys are not stored on the server or included in projects, transcripts, exports, cookies, or browser storage. Live usage is billed by your provider."
+                    : "Connections use server environment variables. Keys are never included in project files, transcripts, browser storage, or evaluation reports."}
                 </p>
               </div>
             </div>
@@ -1928,6 +2028,19 @@ export function Product() {
                           : "Jev decisions + written replies"}
                     </span>
                   </div>
+                  {connections.byok && !connections.jev && (
+                    <div className="p-connect-prompt">
+                      <span>
+                        Ready to try real decisions? Use your own Jev key.
+                      </span>
+                      <button
+                        className="p-text-button"
+                        onClick={() => setSetupProvider("jev")}
+                      >
+                        Connect Jev <ArrowUpRight size={14} />
+                      </button>
+                    </div>
+                  )}
                   <div className="p-messages">
                     <div className="p-conversation-start">
                       <span className="p-logo-icon">
@@ -2343,6 +2456,19 @@ export function Product() {
                     )}
                   </div>
                 </div>
+                {connections.byok && !connections.jev && (
+                  <div className="p-connect-prompt">
+                    <span>
+                      Ready to try real decisions? Use your own Jev key.
+                    </span>
+                    <button
+                      className="p-text-button"
+                      onClick={() => setSetupProvider("jev")}
+                    >
+                      Connect Jev <ArrowUpRight size={14} />
+                    </button>
+                  </div>
+                )}
                 {evalBusy && (
                   <div className="p-eval-progress">
                     <Loader2 size={15} className="spin" />
@@ -2838,72 +2964,25 @@ export function Product() {
         </div>
       )}
       {setupProvider && (
-        <div
-          className="p-modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Connection setup"
-        >
-          <div className="p-modal">
-            <button
-              className="p-modal-close"
-              aria-label="Close connection setup"
-              onClick={() => setSetupProvider(null)}
-            >
-              <X size={18} />
-            </button>
-            <span className="p-kicker">
-              CONNECT {setupProvider === "jev" ? "JEV" : "OPENAI"}
-            </span>
-            <h2>One key. Kept server-side.</h2>
-            {error && (
-              <p role="alert" className="p-inline-error">
-                {error}
-              </p>
-            )}
-            <>
-              <p>
-                Add your provider key to the server environment, then redeploy
-                or restart the server.
-              </p>
-              <label>
-                Environment variable
-                <code className="p-env-name">
-                  {setupProvider === "jev"
-                    ? "TYPESAFE_API_KEY"
-                    : "OPENAI_API_KEY"}
-                </code>
-              </label>
-              <ol className="p-setup-steps">
-                <li>Create an API key in your provider account.</li>
-                <li>
-                  On your own Vercel deployment, open the project’s{" "}
-                  <strong>Settings → Environment Variables</strong> and add the
-                  variable above and STUDIO_ACCESS_TOKEN to protect access.
-                </li>
-                <li>
-                  Redeploy, then use <strong>Test connection</strong> here.
-                </li>
-              </ol>
-              <p className="p-field-hint">
-                For local development, add it to the ignored .env.local file.
-                Never put keys in workflow instructions or project JSON.
-              </p>
-            </>
-            <a
-              className="p-button p-primary"
-              href={
-                setupProvider === "jev"
-                  ? "https://console.typesafe.ai/keys"
-                  : "https://platform.openai.com/api-keys"
-              }
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open provider dashboard <ArrowUpRight size={14} />
-            </a>
-          </div>
-        </div>
+        <ConnectionSetup
+          key={setupProvider}
+          provider={setupProvider}
+          byok={!!connections.byok}
+          request={request}
+          onBusy={setConnectionBusy}
+          onClose={() => {
+            setSetupProvider(null);
+            setError("");
+          }}
+          onConnected={async (key) => {
+            rememberKey(setupProvider as "jev" | "openai", key);
+            await refreshConnections();
+            setSetupProvider(null);
+            notify(
+              `${setupProvider === "jev" ? "Jev" : "OpenAI"} connected for this tab. Choose Live Jev when you're ready.`,
+            );
+          }}
+        />
       )}
     </div>
   );

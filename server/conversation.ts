@@ -28,6 +28,14 @@ export function serverConnectors(
   },
 ): Connectors {
   if (!liveEnabled()) return {};
+  return createConnectorClients(keys);
+}
+
+/** Explicit request credentials only: never fall back to environment credentials. */
+export function createConnectorClients(keys: {
+  jev?: string | undefined;
+  openai?: string | undefined;
+}): Connectors {
   return {
     ...(keys.jev
       ? {
@@ -36,7 +44,7 @@ export function serverConnectors(
             baseURL: "https://api.typesafe.ai",
             timeout: 12000,
             retry: { maxRetries: 1 },
-            logLevel: "warn",
+            logLevel: "off",
           }),
         }
       : {}),
@@ -47,6 +55,7 @@ export function serverConnectors(
             baseURL: "https://api.openai.com/v1",
             timeout: 25000,
             maxRetries: 1,
+            logLevel: "off",
           }),
         }
       : {}),

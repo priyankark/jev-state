@@ -12,16 +12,16 @@ The code-first runtime in `packages/core/src/index.ts` is a separate single-deci
 
 Use [an example file](../examples/workflows/example-support.json) as the complete executable reference. `projectSchema` in [`studio.ts`](../packages/core/src/studio.ts) is authoritative.
 
-| Field | Meaning |
-| --- | --- |
-| `id`, `name`, `description` | Project identity and display metadata |
-| `instructions` | Routing policy passed to Jev |
-| `initial` | Existing state ID where each conversation begins |
-| `threshold` | Required Choice confidence, inclusive, from 0 to 1 |
-| `states` | 2–12 states with stable IDs and allowed destinations |
-| `agent` | `enabled`, Responses `model`, and reply-generation `instructions` |
-| `version`, `createdAt` | Workflow version and creation metadata |
-| `cases` | Up to 30 independent evaluation cases |
+| Field                       | Meaning                                                           |
+| --------------------------- | ----------------------------------------------------------------- |
+| `id`, `name`, `description` | Project identity and display metadata                             |
+| `instructions`              | Routing policy passed to Jev                                      |
+| `initial`                   | Existing state ID where each conversation begins                  |
+| `threshold`                 | Required Choice confidence, inclusive, from 0 to 1                |
+| `states`                    | 2–12 states with stable IDs and allowed destinations              |
+| `agent`                     | `enabled`, Responses `model`, and reply-generation `instructions` |
+| `version`, `createdAt`      | Workflow version and creation metadata                            |
+| `cases`                     | Up to 30 independent evaluation cases                             |
 
 A state has `id`, `label`, `description` (entry criterion), `reply`, `keywords` (simulation only), `transitions` (destination IDs), `terminal`, and optional `position: {x, y}`. IDs begin with a lowercase letter and contain lowercase letters, digits, underscores, or hyphens, up to 40 characters. Reserved IDs include `stay`, `constructor`, and `prototype`. IDs and outgoing destinations must be unique; references must exist. End states cannot have outgoing transitions. Every state can implicitly stay in place.
 
@@ -31,17 +31,20 @@ Studio exports wrap the project; raw project JSON is also accepted by project im
 
 ## Studio HTTP API
 
-The API is same-origin and uses JSON. Default local base: `http://localhost:5173/api/studio`. A protected installation requires the session cookie obtained through `/login`. Provider keys are never accepted in request bodies.
+The API is same-origin and uses JSON. Default local base: `http://localhost:5173/api/studio`. A protected installation requires the session cookie obtained through `/login`. With `STUDIO_BYOK=1` (and demo mode off), personal keys are accepted for verification and per-request live use. They are never stored. `apps/studio/src/personal-keys.ts` holds keys outside persisted workspace state.
 
-| Method/path | Body | Result |
-| --- | --- | --- |
-| `GET /session` | — | `authenticated`, `hosted` |
-| `POST /login` | `{accessCode}` | HTTP-only session cookie |
-| `POST /logout` | — | Clears session cookie |
-| `GET /connections` | — | `jev`, `openai`, `model`, `liveEnabled` flags; no credentials |
-| `POST /connections/test` | `{provider: "jev" or "openai"}` | Checks configured provider access |
-| `POST /turn` | `{project, currentState, messages, mode}` | One `TurnResult` |
-| `POST /eval-case` | `{project, test, mode}` | One `CaseResult` |
+| Method/path              | Body                                                | Result                                                                                             |
+| ------------------------ | --------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `GET /session`           | —                                                   | `authenticated`, `hosted`                                                                          |
+| `POST /login`            | `{accessCode}`                                      | HTTP-only session cookie                                                                           |
+| `POST /logout`           | —                                                   | Clears session cookie                                                                              |
+| `GET /connections`       | —                                                   | Operator `jev`, `openai`, `sources`, `model`, `liveEnabled`, `byok` flags; no personal credentials |
+| `POST /connections/key`  | `{provider: "jev" or "openai", key, consent: true}` | Verifies account access; returns `{ok: true}` without storing a key or setting a cookie            |
+| `POST /connections/test` | `{provider: "jev" or "openai"}`                     | Checks configured provider access                                                                  |
+| `POST /turn`             | `{project, currentState, messages, mode}`           | One `TurnResult`                                                                                   |
+| `POST /eval-case`        | `{project, test, mode}`                             | One `CaseResult`                                                                                   |
+
+When BYOK is enabled, connection POSTs and live requests require `X-Jev-Request: 1`. The browser sends personal keys via `X-Jev-Jev-Key` and `X-Jev-Openai-Key` on `/connections/test` and live `/turn` or `/eval-case` requests only. Verification uses the body above. Any personal key selects request-scoped clients with no operator-credential fallback. `/connections` reports operator configuration; the UI merges this with tab-memory personal status. Disconnect is a browser operation: abort active work, delete keys, and return to simulation. No key session or database exists.
 
 `mode` is `mock` or `live`. Messages are `{role: "user" | "assistant", content: string}`, alternate starting with user, and end with user. Supply at most 40 messages. A terminal state cannot accept another user message. A result includes `from`, `to`, `reply`, `confidence`, `probabilities`, `reason`, `model`, `agentModel`, token counts, elapsed time, and the exact input/questions.
 
@@ -64,7 +67,7 @@ console.log(await response.json());
 JS
 ```
 
-Validation errors return 400, missing authentication 401, rejected origins or disabled hosted live mode 403, excessive body size 413, and provider/turn failures 502. Error responses use `{error: string}` and omit raw provider errors. Requests are capped at 192 KB and 50 seconds. Disconnecting cancels the server signal; cancellation cannot guarantee that a provider has not already consumed tokens.
+Validation errors return 400, missing authentication 401, rejected origins or disabled hosted live mode 403, excessive body size 413, per-instance connection/live rate limits 429, and provider/turn failures 502. Error responses use `{error: string}` and omit raw provider errors. Requests are capped at 192 KB and 50 seconds. Disconnecting cancels the server signal; cancellation cannot guarantee that a provider has not already consumed tokens.
 
 This API accepts client-supplied workflow and conversation state. Use it as a development interface. A production business application needs its own trusted state storage and authorization; never treat these client values as proof of an external action.
 
@@ -120,4 +123,4 @@ Run TypeScript examples with `node --env-file-if-exists=.env.local --import tsx 
 
 Start with a small JSON fixture and a regression case. Change the shared schema before adding new editor controls. Preserve import validation and history snapshots. If a change affects behavior, update `workflowSignature`; if it only affects evaluation, update `evaluationSignature`. Review existing backups when changing their schema.
 
-Provider integrations must retain the same typed judgment boundary and server-only credentials. Check the current [TypeSafe SDK](https://docs.typesafe.ai/sdk/javascript), [Choice contract](https://docs.typesafe.ai/primitives/choice), and [confidence guidance](https://docs.typesafe.ai/confidence) before changing integration behavior.
+Provider integrations must retain the same typed judgment boundary and credential isolation: operator keys stay server-side, while personal keys stay in tab memory and request-scoped server clients. Never add credentials to persisted workspace types or provider error responses. Check the current [TypeSafe SDK](https://docs.typesafe.ai/sdk/javascript), [Choice contract](https://docs.typesafe.ai/primitives/choice), and [confidence guidance](https://docs.typesafe.ai/confidence) before changing integration behavior.

@@ -43,9 +43,15 @@ export function LegalPage() {
             </p>
             <h2>Credentials</h2>
             <p>
-              In a self-hosted deployment, provider keys belong in server-side
-              environment variables. Do not put them in client-side variables,
-              project exports, screenshots, or public issues.
+              Personal keys stay only in this tab’s memory. Reload, close the
+              tab, or choose Disconnect and forget keys to clear them.
+              Connection checks and live requests send keys through this
+              installation’s server to the provider. The app does not save them
+              in browser storage, cookies, exports, or a server database, and
+              does not log them. You must trust the installation’s operator and
+              hosting environment, or self-host. Operator keys in a self-hosted
+              deployment belong in server environment variables. Never put keys
+              in project exports or public issues.
             </p>
             <h2>Deletion and export</h2>
             <p>
