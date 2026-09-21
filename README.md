@@ -1,6 +1,6 @@
 # Jev State
 
-**Design, debug, and evaluate conversational state machines powered by Jev.**
+**Build and regression-test conversational decisions powered by Jev. Leave with runnable code.**
 
 [![Checks](https://github.com/priyankark/jev-state/actions/workflows/ci.yml/badge.svg)](https://github.com/priyankark/jev-state/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -8,7 +8,7 @@
 
 [Try the studio](https://jev-state.vercel.app) · [Five-minute walkthrough](docs/TUTORIAL.md) · [Runtime & API](docs/DEVELOPMENT.md) · [Self-host](docs/SELF_HOSTING.md) · [Contribute](CONTRIBUTING.md)
 
-Jev State is a visual workbench for developers building AI workflows. Draw the allowed paths, describe when each state applies, then try a conversation and inspect every decision. Turn successful and failing conversations into repeatable evaluation cases.
+Jev State helps developers answer: **“Does my agent change state when it should, and did my latest change break another conversation?”** Define the allowed behavior, reproduce a conversation, fix the wrong decision, and protect it with regression tests. Download the workflow as a runnable TypeScript project for your own app.
 
 **MIT licensed. No account, subscription, project paywall, or database required.** Your workspace is saved in your browser. Live model usage is billed separately by your model providers.
 
@@ -23,6 +23,7 @@ An AI conversation needs more than a prompt: it needs explicit states, allowed t
 - **Test real conversations.** Each turn includes the conversation history. Use state-specific replies or optionally generate replies through OpenAI's Responses API.
 - **Understand decisions.** Inspect the actual input, question, probabilities, threshold decision, resolved model, latency, and token usage.
 - **Evaluate repeatably.** Run multi-turn cases with expected final states and reply assertions in the studio or from the command line. Inspect failures and path coverage.
+- **Take runnable code into your app.** Download your workflow, shared execution engine, regression runner, and a copyable TypeScript example. No Jev State deployment is needed at runtime.
 - **Keep your work portable.** Export individual projects or back up and restore an entire workspace, including conversations and reports.
 
 This project **uses XState**; it is an opinionated studio for Jev workflows, not an implementation of all XState features. Current workflows are flat state machines. Nested states, parallel regions, arbitrary executable guards, and XState machine import are not supported.
@@ -42,12 +43,52 @@ npm run dev
 Open **[localhost:5173](http://localhost:5173)**.
 
 1. Choose **Use this example** on the support workflow and create your editable copy.
-2. In **Build**, select a state to edit its entry criteria, reply, keywords, and outgoing transitions.
-3. Open **Converse**, leave **Simulation** selected, and send `I was charged twice`.
+2. In **Define**, select a state to edit its entry criteria, reply, keywords, and outgoing transitions.
+3. Open **Try**, leave **Simulation** selected, and send `I was charged twice`.
 4. Send `It is fixed now` to reach the end state.
-5. Open **Evaluate** and run the three included cases. Click a result to inspect its turns.
+5. Choose **Save as regression test** and confirm the outcome you expected. This works for successful and failing conversations.
+6. In **Test**, run the cases and inspect failures. **Review state criteria** takes you straight to the relevant state.
+7. Open **Get code** to download a runnable project and copy its server integration example.
 
 **The home-screen workflows are examples, not pre-existing projects.** Copying a template creates your own project. You can also start with a blank workflow or import one of the [example JSON files](examples/workflows).
+
+## From a tested conversation to your app
+
+The product follows **Define → Try → Test → Get code**. Each step explains its purpose and offers the next action. Start by describing what the agent should do, then edit states and their entry criteria. A conversation can become a regression test without retyping it; choose the outcome you wanted, including when the run went wrong.
+
+**Get code → Download runnable project** gives you a ZIP containing:
+
+- `workflow.json`: your states, allowed transitions, confidence threshold, agent settings, and regression cases.
+- `workflow.ts` and `lib/`: a server-side integration API and the same execution engine used in the studio.
+- `example.ts`: a copyable multi-turn integration example.
+- `evaluate.ts`: a regression runner with meaningful exit codes for CI.
+- `package.json`, TypeScript configuration, `.env.example`, README, and license.
+- `validation.json`: separate simulation and live validation status, including stale or incomplete runs.
+
+Unzip and run these commands inside the downloaded folder, using Node.js 22+:
+
+```sh
+npm install
+npm run typecheck
+npm test
+npm start
+```
+
+These commands use simulation and need no keys. For real model behavior, set server credentials in `.env` and deliberately run `npm run test:live`. A simulation pass never marks live behavior as validated. Changed criteria or cases invalidate earlier evidence; passing live tests describe your dataset rather than guarantee correctness.
+
+For integration, keep `workflow.ts`, `workflow.json`, and `lib/` in your server project, install the dependencies from the generated `package.json`, and copy the example:
+
+```ts
+import { startConversation, sendMessage } from "./workflow.js";
+
+let session = startConversation({ mode: "live" }); // uses your server's keys
+const result = await sendMessage(session, "I was charged twice");
+session = result.session;
+// result.decision.to / reply / confidence / probabilities
+// Persist session per user and pass it to the next sendMessage call.
+```
+
+The generated code calls TypeSafe/OpenAI directly from your server. It does not depend on this repo checkout, unpublished packages, or the hosted studio. You own authentication, per-user persistence, request serialization, and authorization for business actions. Credentials and saved conversation history are excluded; regression-test messages are included. See the [handoff guide](docs/GET_CODE.md).
 
 ## Simulation and live models
 
@@ -59,7 +100,7 @@ Open **[localhost:5173](http://localhost:5173)**.
 
 Simulation is deterministic and useful for testing the wiring. Its confidence values are fixtures, **not estimates of model accuracy**. Simulation requests still go to the installation's server; on the public demo, that is the hosted server. The [public studio](https://jev-state.vercel.app) starts in simulation and also supports your own provider keys.
 
-On the hosted studio, open **Connections → Connect Jev**, paste your TypeSafe API key, and accept the provider-usage notice. Verification checks account access without generating a reply. Then explicitly choose **Live Jev** in Converse or Evaluate. Add an OpenAI key in Connections only if you want generated replies.
+On the hosted studio, open **Connections → Connect Jev**, paste your TypeSafe API key, and accept the provider-usage notice. Verification checks account access without generating a reply. Then explicitly choose **Live Jev** in Try or Test. Add an OpenAI key in Connections only if you want generated replies.
 
 Personal keys stay in **this tab’s memory**. Reloading, closing the tab, or choosing **Disconnect and forget keys** clears them. They are never saved in localStorage, sessionStorage, cookies, exports, or a server database. Checks and live requests send keys through the same-origin server to the relevant provider; trust that installation's operator or run your own copy. Keys are not sent with simulation requests. Live usage is billed to the connected provider account. No Upstash, hosted key store, or subscription is needed.
 
@@ -77,7 +118,7 @@ npm run check:env  # authenticate and list available models
 npm run smoke:jev  # one small inference request; consumes provider usage
 ```
 
-Optional generated replies need `OPENAI_API_KEY` in the same server environment. In **Build → Workflow settings**, enable generated replies and choose the model and instructions. The model must be available to your OpenAI account. The connector calls the Responses API with `store: false`; it does not run tools, remote Agents SDK services, or MCP connectors.
+Optional generated replies need `OPENAI_API_KEY` in the same server environment. In **Define → Workflow settings**, enable generated replies and choose the model and instructions. The model must be available to your OpenAI account. The connector calls the Responses API with `store: false`; it does not run tools, remote Agents SDK services, or MCP connectors.
 
 Provider credentials never belong in `VITE_*` variables, project JSON, workflow instructions, screenshots, or browser storage. On Vercel, operator-supplied server keys require `STUDIO_ACCESS_TOKEN`. Personal keys can be enabled separately with `STUDIO_BYOK=1`; `STUDIO_PUBLIC_DEMO=1` disables all live calls. See [deployment and configuration](docs/SELF_HOSTING.md).
 
@@ -155,7 +196,7 @@ The code-first example batches multiple judgments in one Jev request and applies
 ## Storage, editing, and limits
 
 - Projects, conversations, and reports are stored in browser `localStorage`, scoped to the site's origin. There is no account sync or server database.
-- Workflow edits require **Save workflow**; switching to Converse or Evaluate saves valid edits. Undo/redo applies to the current editing session. `⌘/Ctrl+S` saves; `⌘/Ctrl+Z` and `⌘/Ctrl+Shift+Z` undo/redo outside text inputs.
+- Workflow edits require **Save workflow**; switching to Try, Test, or Get code saves valid edits. Undo/redo applies to the current editing session. `⌘/Ctrl+S` saves; `⌘/Ctrl+Z` and `⌘/Ctrl+Shift+Z` undo/redo outside text inputs.
 - **Back up workspace** exports saved projects, conversations, and reports. **Restore workspace** validates the file and replaces this device's workspace after confirmation. A project import instead creates a new copy without history.
 - Corrupt stored data is preserved for recovery. Storage failures are visible. Changes from another tab pause saving until you back up/reload, avoiding silent overwrites.
 - The studio retains the latest **60 conversations and 40 evaluation reports** across the workspace. Export important runs before they age out. There is no automatic remote backup.

@@ -126,7 +126,7 @@ test("canvas drag, connections, undo, state editing and layout persist through s
     .getByRole("button", { name: /Graph interaction test/ })
     .first()
     .click();
-  await page.getByRole("button", { name: "Build", exact: true }).click();
+  await page.getByRole("button", { name: "Define", exact: true }).click();
   await expect(node(page, "welcome")).toHaveAttribute(
     "style",
     draggedPosition!,
@@ -166,7 +166,7 @@ test("saved changes flow into conversations, inspection and multi-turn evaluatio
     .getByLabel("Project name", { exact: true })
     .fill("My support workflow");
   // Switching to testing saves valid edits instead of blocking behind an error.
-  await page.getByRole("button", { name: "Converse", exact: true }).click();
+  await page.getByRole("button", { name: "Try", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "My support workflow" }),
   ).toBeVisible();
@@ -180,12 +180,12 @@ test("saved changes flow into conversations, inspection and multi-turn evaluatio
   await expect(edge(page, "welcome", "billing")).toHaveClass(/animated/);
   await expect(edge(page, "technical", "resolved")).not.toHaveClass(/animated/);
   // Rearranging the graph must not reset an in-progress conversation.
-  await page.getByRole("button", { name: "Build", exact: true }).click();
+  await page.getByRole("button", { name: "Define", exact: true }).click();
   await page.getByRole("button", { name: "Auto layout", exact: true }).click();
   await page
     .getByRole("button", { name: "Save workflow", exact: true })
     .click();
-  await page.getByRole("button", { name: "Converse", exact: true }).click();
+  await page.getByRole("button", { name: "Try", exact: true }).click();
   await expect(page.locator(".p-current-state")).toContainText("Billing help");
   await page.getByLabel("Conversation message").fill("It is fixed now");
   await page.getByRole("button", { name: "Send message" }).click();
@@ -195,19 +195,19 @@ test("saved changes flow into conversations, inspection and multi-turn evaluatio
   await page.locator(".p-turn-pill").first().click();
   await expect(page.locator(".p-current-state")).toContainText("Billing help");
   await expect(edge(page, "welcome", "billing")).toHaveClass(/animated/);
-  await page.getByRole("button", { name: "Evaluate", exact: true }).click();
+  await page.getByRole("button", { name: "Test", exact: true }).click();
   await page.getByRole("button", { name: "Run 3 cases" }).click();
   await expect(
     page.getByRole("button", { name: "Passed", exact: true }),
   ).toHaveCount(3);
-  await page.getByRole("button", { name: "Build", exact: true }).click();
+  await page.getByRole("button", { name: "Define", exact: true }).click();
   await page
     .getByRole("button", { name: "Workflow settings", exact: true })
     .click();
   await page
     .getByRole("combobox", { name: "Initial state", exact: true })
     .selectOption("billing");
-  await page.getByRole("button", { name: "Evaluate", exact: true }).click();
+  await page.getByRole("button", { name: "Test", exact: true }).click();
   await expect(page.locator(".p-report-stale")).toBeVisible();
   await page.screenshot({
     path: ".local/ux/evaluation-tested.png",
@@ -251,7 +251,7 @@ test("evaluation errors appear inside the dialog and keyboard focus stays in it"
   page,
 }) => {
   await createSupport(page);
-  await page.getByRole("button", { name: "Evaluate", exact: true }).click();
+  await page.getByRole("button", { name: "Test", exact: true }).click();
   await page.getByRole("button", { name: "Add case", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Edit test case" });
   await page
@@ -277,16 +277,16 @@ test("a fresh template keeps its active conversation after its first layout save
   page,
 }) => {
   await createSupport(page);
-  await page.getByRole("button", { name: "Converse", exact: true }).click();
+  await page.getByRole("button", { name: "Try", exact: true }).click();
   await page.getByLabel("Conversation message").fill("I was charged twice");
   await page.getByRole("button", { name: "Send message" }).click();
   await expect(page.locator(".p-current-state")).toContainText("Billing help");
-  await page.getByRole("button", { name: "Build", exact: true }).click();
+  await page.getByRole("button", { name: "Define", exact: true }).click();
   await page.getByRole("button", { name: "Auto layout", exact: true }).click();
   await page
     .getByRole("button", { name: "Save workflow", exact: true })
     .click();
   await expect(page.locator(".p-version")).toHaveText("v1");
-  await page.getByRole("button", { name: "Converse", exact: true }).click();
+  await page.getByRole("button", { name: "Try", exact: true }).click();
   await expect(page.locator(".p-current-state")).toContainText("Billing help");
 });

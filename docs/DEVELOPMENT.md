@@ -4,13 +4,13 @@
 
 The React application owns editing and browser persistence. React Flow renders the graph. Shared Zod schemas validate project files, API requests, and workspace backups. The Express/Vercel API executes turns using TypeSafe, XState, and optional OpenAI replies. No Studio workspace database is required.
 
-`server/conversation.ts` is the shared engine for interactive conversations, browser evaluations, and CLI evaluations. Each turn constructs a flat XState machine from the project's allowed transitions, starts it at the supplied current state, applies the validated choice if it passes the threshold, and stops the actor. The browser retains history between turns. This is not a durable long-running actor service.
+`packages/core/src/conversation.ts` is the shared engine for interactive conversations, browser evaluations, CLI evaluations, and generated projects. `server/conversation.ts` adds the hosted operator-key access boundary; `packages/core/src/connectors.ts` constructs clients only from explicit keys. Each turn constructs a flat XState machine from the project's allowed transitions, starts it at the supplied current state, applies the validated choice if it passes the threshold, and stops the actor. The browser retains history between turns. This is not a durable long-running actor service.
 
 The code-first runtime in `packages/core/src/index.ts` is a separate single-decision abstraction: a persistent actor owns one invocation, cancellation, policy selection, and a final outcome.
 
 ## Project format
 
-Use [an example file](../examples/workflows/example-support.json) as the complete executable reference. `projectSchema` in [`studio.ts`](../packages/core/src/studio.ts) is authoritative.
+Use [an example file](../examples/workflows/example-support.json) as the complete executable reference. `projectSchema` in [`studio-schema.ts`](../packages/core/src/studio-schema.ts) (re-exported by `studio.ts`) is authoritative.
 
 | Field                       | Meaning                                                           |
 | --------------------------- | ----------------------------------------------------------------- |
@@ -124,3 +124,11 @@ Run TypeScript examples with `node --env-file-if-exists=.env.local --import tsx 
 Start with a small JSON fixture and a regression case. Change the shared schema before adding new editor controls. Preserve import validation and history snapshots. If a change affects behavior, update `workflowSignature`; if it only affects evaluation, update `evaluationSignature`. Review existing backups when changing their schema.
 
 Provider integrations must retain the same typed judgment boundary and credential isolation: operator keys stay server-side, while personal keys stay in tab memory and request-scoped server clients. Never add credentials to persisted workspace types or provider error responses. Check the current [TypeSafe SDK](https://docs.typesafe.ai/sdk/javascript), [Choice contract](https://docs.typesafe.ai/primitives/choice), and [confidence guidance](https://docs.typesafe.ai/confidence) before changing integration behavior.
+
+## Code generation
+
+`packages/core/src/handoff.ts` builds a standalone TypeScript project from a schema-validated workflow, report metadata, and runtime source files. The browser imports the runtime and schemas as raw source through Vite, then uses fflate to create a local ZIP. The executable runtime is shared with the server; no separate generated decision algorithm can drift from it. Runtime credentials are never inputs to generation. Reports contribute only validation summaries; conversation histories are excluded. The workflow includes saved regression cases and their messages.
+
+`evaluationEvidence` evaluates the most recent report for each mode independently, requires all current cases, checks the full behavioral/case signature, and flags failed, incomplete, stale, unrun, or absent suites. It does not label simulation as model validation or promise production correctness. Downloading unvalidated code remains allowed with its status visible.
+
+`tests/handoff.test.ts` unzips into a temporary directory outside the repo, typechecks the generated files, executes the example and regression CLI, checks pass/fail/error exit codes, and compares generated turn behavior against the studio. Installed public dependencies are symlinked to keep CI offline for that test. A separate fresh-install smoke check verifies `npm install` in the downloaded project. Browser tests cover the complete conversation → expectation → failure → criteria → code path, clipboard copying, ZIP contents, and mobile layout.

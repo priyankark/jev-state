@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { unzipSync, strFromU8 } from "fflate";
 
 const key = "test-personal-jev-key-never-persist";
 async function enablePersonalConnections(page: Page) {
@@ -41,7 +42,7 @@ async function createProject(page: Page) {
   await page
     .getByRole("button", { name: "Create project", exact: true })
     .click();
-  await page.getByRole("button", { name: "Converse", exact: true }).click();
+  await page.getByRole("button", { name: "Try", exact: true }).click();
 }
 
 test("personal keys are opt-in, never persisted or exported, isolated between tabs, and cleared on reload", async ({
@@ -100,6 +101,17 @@ test("personal keys are opt-in, never persisted or exported, isolated between ta
   expect(
     await readFile((await (await download).path())!, "utf8"),
   ).not.toContain(key);
+  await page
+    .getByRole("button", { name: "Get code", exact: true })
+    .first()
+    .click();
+  const codeDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download runnable project" }).click();
+  const archive = unzipSync(
+    await readFile((await (await codeDownload).path())!),
+  );
+  for (const content of Object.values(archive))
+    expect(strFromU8(content)).not.toContain(key);
   const other = await context.newPage();
   await enablePersonalConnections(other);
   await other.goto("/");

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ProjectGraph, layoutStates } from "./ProjectGraph.js";
+import { GetCode } from "./GetCode.js";
+import { evaluationEvidence } from "../../../packages/core/src/handoff.js";
 import { ConnectionSetup } from "./ConnectionSetup.js";
 import {
   personalKeyHeaders,
@@ -25,6 +27,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  Code2,
   Download,
   FileJson,
   GitBranch,
@@ -152,7 +155,7 @@ export function Product() {
       : "Saved on this device";
   const [page, setPage] = useState<"projects" | "connections">("projects");
   const [projectId, setProjectId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"build" | "conversation" | "evals">(
+  const [tab, setTab] = useState<"build" | "conversation" | "evals" | "code">(
     "conversation",
   );
   const [session, setSession] = useState<boolean | null>(null),
@@ -167,6 +170,7 @@ export function Product() {
     [create, setCreate] = useState(false),
     [projectName, setProjectName] = useState(""),
     [templateId, setTemplateId] = useState("blank");
+  const [projectGoal, setProjectGoal] = useState("");
   const [editorPanel, setEditorPanel] = useState<"state" | "workflow">("state");
   const [past, setPast] = useState<Project[]>([]),
     [future, setFuture] = useState<Project[]>([]);
@@ -345,8 +349,10 @@ export function Product() {
     const p = template
       ? copyTemplate(template, projectName.trim() || template.name)
       : { ...blankProject(), name: projectName.trim() || "My first project" };
+    if (projectGoal.trim()) p.instructions = projectGoal.trim();
     setLibrary((prev) => ({ ...prev, projects: [p, ...prev.projects] }));
     setCreate(false);
+    setProjectGoal("");
     setProjectName("");
     openProject(p);
     setTab("build");
@@ -354,6 +360,7 @@ export function Product() {
   }
   function startTemplate(t: Project) {
     setTemplateId(t.id);
+    setProjectGoal(t.instructions);
     setProjectName(t.name);
     setCreate(true);
   }
@@ -654,6 +661,25 @@ export function Product() {
       if (current === revision.current) setBusy(false);
     }
   }
+  function goTo(next: "build" | "conversation" | "evals" | "code") {
+    if (dirty && next !== "build" && !saveProject()) return;
+    setTab(next);
+  }
+  function captureConversation() {
+    if (!project || !conversation) return;
+    const turns = conversation.messages
+      .filter((m) => m.role === "user")
+      .map((m) => m.content);
+    if (!turns.length || turns.length > 5 || project.cases.length >= 30) return;
+    setError("");
+    setCaseEditor({
+      id: crypto.randomUUID(),
+      name: turns[0]!.slice(0, 100),
+      turns,
+      expectedState: currentState ?? project.initial,
+      responseIncludes: "",
+    });
+  }
   function newConversation() {
     cancelWork();
     setInspectedState(null);
@@ -689,7 +715,9 @@ export function Product() {
     }));
     setDraft(updated);
     setCaseEditor(null);
+    setTab("evals");
     setError("");
+    notify("Expectation saved. Run the tests to check this behavior.");
   }
   async function runEvals() {
     if (!project || !project.cases.length) return;
@@ -895,7 +923,7 @@ export function Product() {
           </span>
           <span>
             jev<span>state</span>
-            <small>BUILD WITH CERTAINTY</small>
+            <small>TEST DECISIONS. GET CODE.</small>
           </span>
         </a>
         <div className="p-workspace-chip">
@@ -965,12 +993,13 @@ export function Product() {
           <div className="p-tip">
             <Sparkles size={18} />
             <strong>
-              Small judgments.
+              Fix a decision.
               <br />
-              Bigger possibilities.
+              Protect the next change.
             </strong>
             <p>
-              Let Jev guide the state. Let your agents handle the conversation.
+              Capture conversations as tests, then take the workflow into your
+              app.
             </p>
           </div>
           <a href="https://docs.typesafe.ai" target="_blank" rel="noreferrer">
@@ -1287,7 +1316,8 @@ export function Product() {
                   <span className="p-count">{library.projects.length}</span>
                 </h1>
                 <p>
-                  Build stateful agents you can understand, test, and improve.
+                  Build and regression-test conversational decisions powered by
+                  Jev.
                 </p>
               </div>
               <div className="p-actions">
@@ -1301,6 +1331,7 @@ export function Product() {
                   className="p-button p-primary"
                   onClick={() => {
                     setTemplateId("blank");
+                    setProjectGoal("");
                     setProjectName("");
                     setCreate(true);
                   }}
@@ -1345,37 +1376,40 @@ export function Product() {
                     <Sparkles size={12} /> YOUR WORKSPACE STARTS HERE
                   </span>
                   <h2>
-                    Give your conversations
-                    <br />a sense of direction.
+                    Know why your agent
+                    <br />
+                    takes the next step.
                   </h2>
                   <p>
-                    Define the steps, connect an agent, and watch a conversation
-                    find its way. Start from scratch or make an example your
-                    own.
+                    Define the behavior you want. Reproduce a conversation, fix
+                    the wrong decision, and check for regressions. Leave with
+                    runnable TypeScript and tests for your app.
                   </p>
                   <button
                     className="p-button p-primary"
                     onClick={() => {
                       setTemplateId("blank");
+                      setProjectGoal("");
                       setCreate(true);
                     }}
                   >
-                    Create your first project <ArrowRight size={16} />
+                    Define your agent’s behavior <ArrowRight size={16} />
                   </button>
                   <span className="p-welcome-note">
-                    No API key needed to explore in simulation.
+                    Start with free simulation. Connect Jev when you want to
+                    test real decisions.
                   </span>
                 </div>
                 <div className="p-hero-flow">
                   <div className="p-hero-message">
-                    <MessageSquare size={17} /> “I’m ready. What’s next?”
+                    <MessageSquare size={17} /> “I was charged twice.”
                   </div>
                   <span className="p-flow-line" />
                   <div className="p-hero-decision">
                     <Zap size={18} />
                     <div>
-                      <strong>Jev understands the moment</strong>
-                      <span>Conversation + state → a typed decision</span>
+                      <strong>Welcome → Billing help</strong>
+                      <span>Inspect the choice, criteria, and confidence</span>
                     </div>
                     <span className="p-dot" />
                   </div>
@@ -1390,7 +1424,7 @@ export function Product() {
                   </div>
                   <div className="p-hero-caption">
                     <span />
-                    Every transition, explained.
+                    Save this conversation as a regression test.
                   </div>
                 </div>
               </section>
@@ -1439,9 +1473,9 @@ export function Product() {
             </div>
             <div className="p-home-footer">
               <span>
-                <Workflow size={14} /> Design. Converse. Evaluate. Repeat.
+                <Workflow size={14} /> Define → Try → Test → Get code
               </span>
-              <span>Jev State · Product preview</span>
+              <span>Your workflow. Your code.</span>
             </div>
           </div>
         ) : (
@@ -1463,6 +1497,14 @@ export function Product() {
               </div>
               <div className="p-actions">
                 <span className="p-version">v{project.version}</span>
+                {tab !== "code" && (
+                  <button
+                    className="p-button p-primary"
+                    onClick={() => goTo("code")}
+                  >
+                    <Code2 size={14} /> Get code
+                  </button>
+                )}
                 <button
                   className="p-button"
                   onClick={() =>
@@ -1483,28 +1525,30 @@ export function Product() {
                   [
                     {
                       id: "build",
-                      label: "Build",
+                      label: "Define",
                       icon: <Workflow size={16} />,
                     },
                     {
                       id: "conversation",
-                      label: "Converse",
+                      label: "Try",
                       icon: <MessageSquare size={16} />,
                     },
                     {
                       id: "evals",
-                      label: "Evaluate",
+                      label: "Test",
                       icon: <Beaker size={16} />,
+                    },
+                    {
+                      id: "code",
+                      label: "Get code",
+                      icon: <Code2 size={16} />,
                     },
                   ] as const
                 ).map((t) => (
                   <button
                     className={tab === t.id ? "active" : ""}
                     key={t.id}
-                    onClick={() => {
-                      if (dirty && t.id !== "build" && !saveProject()) return;
-                      setTab(t.id);
-                    }}
+                    onClick={() => goTo(t.id)}
                   >
                     {t.icon}
                     {t.label}
@@ -1516,10 +1560,72 @@ export function Product() {
                   ? "Shape the path your conversation takes."
                   : tab === "conversation"
                     ? "Try the experience, one message at a time."
-                    : "Turn expectations into repeatable checks."}
+                    : tab === "evals"
+                      ? "Check the behavior before you ship it."
+                      : "Run your workflow in your own app."}
               </span>
             </div>
-            {tab === "build" && working ? (
+            {tab !== "code" && (
+              <div className="p-next-step" aria-label="Next step">
+                <div>
+                  <span className="p-kicker">
+                    {tab === "build"
+                      ? "1 · DEFINE THE BEHAVIOR"
+                      : tab === "conversation"
+                        ? "2 · TRY AND INSPECT"
+                        : tab === "evals"
+                          ? "3 · CHECK FOR REGRESSIONS"
+                          : "4 · USE IT IN YOUR APP"}
+                  </span>
+                  <strong>
+                    {tab === "build"
+                      ? "What should happen next—and when?"
+                      : tab === "conversation"
+                        ? "Try a real user message. Inspect the decision."
+                        : tab === "evals"
+                          ? "Does the flow reach the states you expect?"
+                          : "Take the workflow and its tests with you."}
+                  </strong>
+                  <p>
+                    {tab === "build"
+                      ? "Describe when to enter each state and connect the allowed paths. Save, then try a conversation."
+                      : tab === "conversation"
+                        ? "Click a reply’s state badge to inspect it. Save the conversation as a test with the outcome you wanted."
+                        : tab === "evals"
+                          ? "Run your cases, inspect failures, and fix the criteria. Simulation checks wiring; Live Jev checks model behavior."
+                          : "A runnable TypeScript project, a copyable integration example, and honest validation status."}
+                  </p>
+                </div>
+                {tab === "build" && (
+                  <button
+                    className="p-button p-primary"
+                    onClick={() => goTo("conversation")}
+                  >
+                    Try a conversation <ArrowRight size={14} />
+                  </button>
+                )}
+                {tab === "conversation" && (
+                  <button className="p-button" onClick={() => goTo("evals")}>
+                    Review regression tests <ArrowRight size={14} />
+                  </button>
+                )}
+                {tab === "evals" && (
+                  <button
+                    className="p-button p-primary"
+                    onClick={() => goTo("code")}
+                  >
+                    Use in your app <ArrowRight size={14} />
+                  </button>
+                )}
+              </div>
+            )}
+            {tab === "code" ? (
+              <GetCode
+                project={project}
+                reports={reports}
+                onEvaluate={() => goTo("evals")}
+              />
+            ) : tab === "build" && working ? (
               <div className="p-builder">
                 <div className="p-save-bar">
                   <span>
@@ -2113,6 +2219,37 @@ export function Product() {
                     )}
                     <div ref={chatEnd} />
                   </div>
+                  {conversation && conversation.turns.length > 0 && (
+                    <div className="p-save-test">
+                      <div>
+                        <strong>Would you expect this outcome?</strong>
+                        <p>
+                          {project.cases.length >= 30
+                            ? "This workflow has 30 cases. Remove an older case before adding another."
+                            : workflowSignature(
+                                  conversation.projectSnapshot,
+                                ) !== workflowSignature(project)
+                              ? "This conversation used earlier criteria. Start a new one to test the current workflow."
+                              : conversation.turns.length > 5
+                                ? "Cases support up to 5 turns. Start a shorter conversation to capture a focused regression."
+                                : "Save these messages and choose the state you wanted to reach."}
+                        </p>
+                      </div>
+                      <button
+                        className="p-button"
+                        disabled={
+                          busy ||
+                          conversation.turns.length > 5 ||
+                          project.cases.length >= 30 ||
+                          workflowSignature(conversation.projectSnapshot) !==
+                            workflowSignature(project)
+                        }
+                        onClick={captureConversation}
+                      >
+                        <Beaker size={14} /> Save as regression test
+                      </button>
+                    </div>
+                  )}
                   <div className="p-chat-compose">
                     {!activeState?.terminal &&
                       (conversation?.mode ?? mode) === "mock" && (
@@ -2151,7 +2288,7 @@ export function Product() {
                           {activeState?.transitions.length === 0 && (
                             <small>
                               This state has no next step. Add a transition in
-                              Build to continue the workflow.
+                              Define to continue the workflow.
                             </small>
                           )}
                           {!!activeState?.transitions.length &&
@@ -2162,8 +2299,8 @@ export function Product() {
                                 )?.keywords.length,
                             ) && (
                               <small>
-                                Add simulation hints to the next states in Build
-                                to test these transitions.
+                                Add simulation hints to the next states in
+                                Define to test these transitions.
                               </small>
                             )}
                         </div>
@@ -2299,7 +2436,7 @@ export function Product() {
                           setTab("build");
                         }}
                       >
-                        Edit in builder <ArrowRight size={13} />
+                        Edit state criteria <ArrowRight size={13} />
                       </button>
                     </div>
                   )}
@@ -2414,6 +2551,17 @@ export function Product() {
               </div>
             ) : (
               <div className="p-evals">
+                <div
+                  className="p-evidence p-evidence-compact"
+                  aria-label="Current workflow checks"
+                >
+                  <span>
+                    {evaluationEvidence(project, reports, "mock").label}
+                  </span>
+                  <span>
+                    {evaluationEvidence(project, reports, "live").label}
+                  </span>
+                </div>
                 <div className="p-eval-heading">
                   <div>
                     <h2>Know what good looks like.</h2>
@@ -2788,7 +2936,8 @@ export function Product() {
             <span className="p-kicker">MAKE SOMETHING YOURS</span>
             <h2>Create a project</h2>
             <p>
-              A project holds your workflow, conversations, and evaluations.
+              Start with the behavior you want to test. You’ll leave with a
+              workflow, regression cases, and runnable code.
             </p>
             <label>
               Project name
@@ -2804,7 +2953,13 @@ export function Product() {
               Start from
               <select
                 value={templateId}
-                onChange={(e) => setTemplateId(e.target.value)}
+                onChange={(e) => {
+                  setTemplateId(e.target.value);
+                  setProjectGoal(
+                    templates.find((t) => t.id === e.target.value)
+                      ?.instructions ?? "",
+                  );
+                }}
               >
                 <option value="blank">Blank workflow — your own idea</option>
                 {templates.map((t) => (
@@ -2814,6 +2969,20 @@ export function Product() {
                 ))}
               </select>
             </label>
+            <label>
+              What should your agent do?
+              <textarea
+                rows={3}
+                maxLength={4000}
+                placeholder="e.g. Route billing questions to billing help. Escalate only when the user asks for a person. Confirm resolution before closing."
+                value={projectGoal}
+                onChange={(e) => setProjectGoal(e.target.value)}
+              />
+            </label>
+            <p className="p-field-hint">
+              This becomes the workflow’s routing instructions. Define the
+              states and entry criteria in the next step.
+            </p>
             <div className="p-modal-note">
               <Copy size={16} />
               <span>
@@ -2886,6 +3055,11 @@ export function Product() {
               Up to 5 turns. The agent’s reply is added between each message,
               just like a real conversation.
             </p>
+            <p className="p-field-hint">
+              Choose the state you wanted to reach, even if the conversation
+              went somewhere else. This is your expected behavior for future
+              runs.
+            </p>
             <label>
               Expected final state
               <select
@@ -2947,6 +3121,38 @@ export function Product() {
               <strong>{detail.actual}</strong>
             </p>
             {detail.error && <p className="p-inline-error">{detail.error}</p>}
+            {project && (
+              <div className="p-result-actions">
+                <button
+                  className="p-button p-primary"
+                  onClick={() => {
+                    const stateId = project.states.some(
+                      (s) => s.id === detail.expected,
+                    )
+                      ? detail.expected
+                      : project.initial;
+                    setDetail(null);
+                    setTab("build");
+                    selectState(stateId);
+                  }}
+                >
+                  Review state criteria <ArrowRight size={14} />
+                </button>
+                <button
+                  className="p-button"
+                  onClick={() => {
+                    const test = project.cases.find(
+                      (c) => c.id === detail.caseId,
+                    );
+                    setDetail(null);
+                    if (test) setCaseEditor(structuredClone(test));
+                  }}
+                >
+                  Edit expectation
+                </button>
+              </div>
+            )}
+
             {detail.turns.map((t, i) => (
               <div className="p-result-turn" key={t.id}>
                 <strong>

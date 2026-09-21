@@ -9,13 +9,13 @@ test("workspace backup restores conversations and evaluations, and rejects malfo
   await page
     .getByRole("button", { name: "Create project", exact: true })
     .click();
-  await page.getByRole("button", { name: "Converse", exact: true }).click();
+  await page.getByRole("button", { name: "Try", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Conversation message" })
     .fill("charged twice");
   await page.getByRole("button", { name: "Send message" }).click();
   await expect(page.locator(".p-current-state")).toContainText("Billing help");
-  await page.getByRole("button", { name: "Evaluate", exact: true }).click();
+  await page.getByRole("button", { name: "Test", exact: true }).click();
   await page.getByRole("button", { name: "Run 3 cases" }).click();
   await expect(
     page.getByRole("button", { name: "Passed", exact: true }),
@@ -67,7 +67,7 @@ test("a failed provider request preserves the message and state for a successful
   await page
     .getByRole("button", { name: "Create project", exact: true })
     .click();
-  await page.getByRole("button", { name: "Converse", exact: true }).click();
+  await page.getByRole("button", { name: "Try", exact: true }).click();
   await page.route("**/api/studio/turn", (route) =>
     route.fulfill({
       status: 502,

@@ -19,7 +19,7 @@ test("examples are separate, editable copies support conversations and multi-tur
   await expect(
     page.getByRole("heading", { name: "My conversation agent" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Converse", exact: true }).click();
+  await page.getByRole("button", { name: "Try", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Conversation message" })
     .fill("I was charged twice");
@@ -44,7 +44,7 @@ test("examples are separate, editable copies support conversations and multi-tur
   await expect(
     page.getByText("Conversation complete", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Evaluate", exact: true }).click();
+  await page.getByRole("button", { name: "Test", exact: true }).click();
   await page.getByRole("button", { name: "Run 3 cases" }).click();
   await expect(
     page.getByRole("button", { name: "Passed", exact: true }),
@@ -65,7 +65,7 @@ test("examples are separate, editable copies support conversations and multi-tur
     "reached billing",
   );
   await page.getByRole("button", { name: "Close result" }).click();
-  await page.getByRole("button", { name: "Build", exact: true }).click();
+  await page.getByRole("button", { name: "Define", exact: true }).click();
   await page
     .getByRole("button", { name: "Workflow settings", exact: true })
     .click();
