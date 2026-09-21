@@ -12,16 +12,17 @@ The intended outcome of Jev State is a decision flow you understand, regression 
 
 ## What you receive
 
-| File                                                 | Purpose                                                                                           |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `workflow.json`                                      | States, criteria, transitions, threshold, agent configuration, and your regression cases          |
-| `workflow.ts`                                        | `startConversation` and `sendMessage` integration functions                                       |
-| `example.ts`                                         | Copyable server-side usage example                                                                |
-| `evaluate.ts`                                        | Regression runner for local development and CI                                                    |
-| `lib/`                                               | The actual studio execution engine, explicit provider-client construction, and validation schemas |
-| `validation.json`                                    | Simulation and live status at export, with report timestamps                                      |
-| `package.json`, `tsconfig.json`                      | Public dependencies and TypeScript configuration                                                  |
-| `.env.example`, `.gitignore`, `README.md`, `LICENSE` | Setup instructions, credential placeholders, ignored files, and license                           |
+| File                                                 | Purpose                                                                                              |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `workflow.json`                                      | States, criteria, transitions, threshold, agent configuration, and your regression cases             |
+| `workflow.ts`                                        | `startConversation` and `sendMessage` integration functions                                          |
+| `example.ts`                                         | Copyable server-side usage example                                                                   |
+| `.github/workflows/check.yml`                        | GitHub Actions typecheck and simulation regressions on pushes and pull requests; no provider secrets |
+| `evaluate.ts`                                        | Regression runner for local development and CI                                                       |
+| `lib/`                                               | The actual studio execution engine, explicit provider-client construction, and validation schemas    |
+| `validation.json`                                    | Simulation and live status at export, with report timestamps                                         |
+| `package.json`, `tsconfig.json`                      | Public dependencies and TypeScript configuration                                                     |
+| `.env.example`, `.gitignore`, `README.md`, `LICENSE` | Setup instructions, credential placeholders, ignored files, and license                              |
 
 No repository clone, unpublished package, hosted studio, account, or database is required by this code. The **Copy file** button copies the previewed file. The example depends on the included `workflow.ts`, `workflow.json`, and `lib/`; it is not a standalone one-file runtime.
 
@@ -36,7 +37,9 @@ npm test
 npm start
 ```
 
-These commands default to simulation and make no model-provider requests. The example uses the first saved test message, or `Hello` when no cases exist. `npm test` exits 0 when all expectations pass, 1 for failed expectations, and 2 for execution/configuration errors or an empty suite. It prints a JSON report suitable for CI. Commit the generated lockfile for repeatable installs.
+These commands default to simulation and make no model-provider requests. The example uses the first saved test message, or `Hello` when no cases exist. `npm test` exits 0 when all expectations pass, 1 for failed expectations, and 2 for execution/configuration errors or an empty suite. It prints a JSON report suitable for CI. Commit the generated lockfile for repeatable installs. The included GitHub Actions workflow runs these typechecks and simulation tests automatically; live inference requires a deliberate separate setup.
+
+Optional per-turn expectations travel with the code in `workflow.json`: for example, `expectedPath: ["billing", "resolved"]` checks both turns, while `null` skips a turn. A wrong intermediate state fails even when the final state and reply match. A conversation ending before all test messages are consumed also fails (exit 1) and keeps its partial trace in the JSON report. These assertions run through the same shared engine as the studio.
 
 For live use, copy `.env.example` to `.env`, set `TYPESAFE_API_KEY`, and add `OPENAI_API_KEY` only if the workflow enables generated replies. Explicitly run `npm run test:live` for model evaluations. Change `startConversation({ mode: "mock" })` to `{ mode: "live" }` in the example for live turns. These requests are billed to your provider account.
 

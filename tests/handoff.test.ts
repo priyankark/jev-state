@@ -153,6 +153,13 @@ test("handoff compiles outside the repo, runs cases, and uses the same decisions
     );
     assert.equal(live.decision.to, "billing");
     assert.equal(live.decision.model, "test-jev");
+    project.cases[0]!.expectedPath = ["technical", "resolved"];
+    await writeFile(join(dir, "workflow.json"), JSON.stringify(project));
+    const pathFailure = run(["--import", "tsx", "evaluate.ts"]);
+    assert.equal(pathFailure.status, 1);
+    assert.equal(JSON.parse(pathFailure.stdout).results[0].actual, "resolved");
+    assert.equal(JSON.parse(pathFailure.stdout).results[0].pathPassed, false);
+    delete project.cases[0]!.expectedPath;
     project.cases[0]!.expectedState = "technical";
     await writeFile(join(dir, "workflow.json"), JSON.stringify(project));
     const failed = run(["--import", "tsx", "evaluate.ts"]);

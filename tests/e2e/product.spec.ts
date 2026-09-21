@@ -51,9 +51,7 @@ test("examples are separate, editable copies support conversations and multi-tur
   ).toHaveCount(3);
   await page.getByRole("button", { name: "Add case", exact: true }).click();
   await page.getByLabel("Case name").fill("Explicit failure");
-  await page
-    .getByLabel("User messages, one turn per line")
-    .fill("I was charged twice");
+  await page.getByLabel("User message 1").fill("I was charged twice");
   await page.getByLabel("Expected final state").selectOption("technical");
   await page.getByRole("button", { name: "Save test case" }).click();
   await page.getByRole("button", { name: "Run 4 cases" }).click();

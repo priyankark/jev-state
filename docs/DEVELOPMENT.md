@@ -25,6 +25,12 @@ Use [an example file](../examples/workflows/example-support.json) as the complet
 
 A state has `id`, `label`, `description` (entry criterion), `reply`, `keywords` (simulation only), `transitions` (destination IDs), `terminal`, and optional `position: {x, y}`. IDs begin with a lowercase letter and contain lowercase letters, digits, underscores, or hyphens, up to 40 characters. Reserved IDs include `stay`, `constructor`, and `prototype`. IDs and outgoing destinations must be unique; references must exist. End states cannot have outgoing transitions. Every state can implicitly stay in place.
 
+Evaluation cases contain `id`, `name`, `turns` (1–5 user messages), `expectedState`, `responseIncludes`, and optional `expectedPath`. The path has exactly one entry per turn, each an existing state ID or `null` to skip that turn. A non-null final entry must equal `expectedState`. Older cases without paths keep their final-state/reply checks. Each message may contain line breaks.
+
+Evaluation results include `pathPassed`, optional `expectedPath`, and `failureReasons`, alongside final-state and reply checks. Reaching a terminal state before all case messages have run is a failed expectation; completed turns remain in the report. Provider failures remain execution errors. Workspace loading accepts older reports without the added fields.
+
+`compareReports` compares the most recent preceding report for the same project and mode, using each report's captured case definitions. Only identical messages and expectations are comparable; edited tests, missing results, provider errors, and unavailable historical metadata cannot count as fixes or regressions. Renaming a case does not change its expectation.
+
 Criteria currently belong to the destination state, so all incoming edges share that criterion. Per-edge criteria and executable guards are not available. Position changes do not alter the behavioral signature. Case changes alter the evaluation signature without changing conversation behavior.
 
 Studio exports wrap the project; raw project JSON is also accepted by project import and the CLI. Workspace backups have `{ "schemaVersion": 1, "workspace": { "projects": [], "conversations": [], "reports": [] } }`. Backups validate all history before replacing data. Project files and workspace backups are different formats; only backups restore history.

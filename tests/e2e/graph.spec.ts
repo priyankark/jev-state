@@ -254,12 +254,10 @@ test("evaluation errors appear inside the dialog and keyboard focus stays in it"
   await page.getByRole("button", { name: "Test", exact: true }).click();
   await page.getByRole("button", { name: "Add case", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Edit test case" });
-  await page
-    .getByLabel("User messages, one turn per line")
-    .fill("First message\n\nThird message");
+  await page.getByLabel("User message 1").fill(" ");
   await page.getByRole("button", { name: "Save test case" }).click();
   await expect(dialog.getByRole("alert")).toHaveText(
-    "Add 1–5 messages, one per line, with no empty lines.",
+    "Add 1–5 non-empty user messages.",
   );
   await page.getByRole("button", { name: "Save test case" }).focus();
   await page.keyboard.press("Tab");

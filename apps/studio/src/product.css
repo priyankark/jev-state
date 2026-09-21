@@ -3603,6 +3603,149 @@
   flex-wrap: wrap;
   margin: 18px 0;
 }
+
+.p-path-editor {
+  border: 1px solid #dce5d2;
+  background: #f6f8f1;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 18px 0;
+}
+.p-path-editor label small {
+  display: block;
+  font-weight: normal;
+  color: #536650;
+  font-size: 12px;
+  margin: 7px 0;
+  white-space: pre-wrap;
+}
+.p-regression-comparison {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  background: #fff;
+  border: 1px solid #dce5d2;
+  border-radius: 9px;
+  margin: 20px 0;
+}
+.p-regression-comparison > div {
+  flex: 1 1 260px;
+}
+.p-regression-comparison strong {
+  font-size: 16px;
+}
+.p-regression-comparison p,
+.p-regression-comparison small {
+  font-size: 12px;
+  color: #536650;
+  line-height: 1.7;
+}
+.p-regression-comparison p {
+  margin: 6px 0 0;
+}
+.p-regression-comparison > small {
+  flex-basis: 100%;
+}
+.p-case-change {
+  display: block;
+  margin-top: 7px;
+  color: #536650;
+  font-size: 11px;
+}
+.p-case-change.regressed {
+  color: #ad4c31;
+}
+.p-case-change.fixed {
+  color: #305f43;
+}
+.p-failure-summary {
+  padding: 15px;
+  margin: 18px 0;
+  border: 1px solid #e7cfc3;
+  background: #fcf5ef;
+  border-radius: 7px;
+}
+.p-failure-summary strong {
+  font-size: 13px;
+  color: #923d28;
+}
+.p-failure-summary ul {
+  padding-left: 18px;
+  margin: 9px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.p-decision-step {
+  margin: 16px 0;
+  border: 1px solid #dce5d2;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff;
+}
+.p-decision-step.mismatch {
+  border-color: #cc9b84;
+}
+.p-decision-step header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+.p-decision-step header strong {
+  font-size: 13px;
+}
+.p-trace-message {
+  margin: 16px 0;
+}
+.p-trace-message > span {
+  font: 10px var(--mono);
+  color: #58734e;
+}
+.p-modal .p-trace-message p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 6px 0;
+  color: #344d3c;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.p-modal .p-path-expectation,
+.p-modal .p-trace-rule {
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 12px 0;
+}
+.mismatch .p-path-expectation {
+  color: #923d28;
+}
+.p-decision-step summary {
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.p-decision-step dl > div {
+  padding: 10px 0;
+  border-bottom: 1px solid #e8eddf;
+}
+.p-decision-step dt {
+  display: flex;
+  justify-content: space-between;
+  font: 12px var(--mono);
+  gap: 10px;
+}
+.p-decision-step dd {
+  margin: 6px 0;
+  font-size: 12px;
+  color: #536650;
+  line-height: 1.7;
+}
+.p-decision-step small {
+  font-size: 11px;
+  color: #536650;
+}
 @media (max-width: 1100px) {
   .p-handoff-steps {
     grid-template-columns: 1fr;
@@ -3639,5 +3782,85 @@
   .p-evidence .p-badge {
     white-space: normal;
     line-height: 1.5;
+  }
+}
+
+.p-case-turns {
+  display: grid;
+  gap: 12px;
+}
+.p-case-turn {
+  padding: 12px;
+  border: 1px solid var(--p-line);
+  border-radius: 10px;
+}
+.p-case-turn .p-text-button {
+  margin-top: 4px;
+}
+
+@media (max-width: 600px) {
+  .p-case-table table {
+    min-width: 0;
+  }
+  .p-case-table thead {
+    display: none;
+  }
+  .p-case-table tbody {
+    display: block;
+  }
+  .p-case-table tbody > tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 16px;
+    gap: 14px 10px;
+    border-bottom: 1px solid var(--p-line);
+  }
+  .p-case-table tbody > tr:last-child {
+    border-bottom: 0;
+  }
+  .p-case-table td {
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+  .p-case-table td:first-child {
+    grid-column: 1 / -1;
+    width: auto;
+    max-width: none;
+  }
+  .p-case-table td p {
+    max-width: none;
+    font-size: 12px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .p-case-table .p-case-name {
+    font-size: 14px;
+  }
+  .p-case-table td:nth-child(2)::before {
+    content: "Expected final state";
+    display: block;
+    margin-bottom: 10px;
+    font-size: 11px;
+    color: #536650;
+  }
+  .p-case-table td:nth-child(3) {
+    grid-column: 1;
+  }
+  .p-case-table td:last-child {
+    grid-column: 2;
+    grid-row: 2 / 4;
+    align-self: end;
+  }
+  .p-case-table .p-result {
+    padding: 9px 12px;
+    font-size: 12px;
+  }
+  .p-case-table .p-state-tag {
+    font-size: 11px;
+  }
+  .p-case-table .p-icon-button {
+    min-width: 40px;
+    min-height: 40px;
   }
 }

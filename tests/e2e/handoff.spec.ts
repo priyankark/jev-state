@@ -31,9 +31,7 @@ test("a conversation becomes a regression, a failure leads to criteria, and code
   await page.getByRole("button", { name: "Send message" }).click();
   await expect(page.locator(".p-current-state")).toContainText("Billing help");
   await page.getByRole("button", { name: "Save as regression test" }).click();
-  await expect(page.getByLabel("User messages, one turn per line")).toHaveValue(
-    "charged twice",
-  );
+  await expect(page.getByLabel("User message 1")).toHaveValue("charged twice");
   await page
     .getByLabel("Case name", { exact: true })
     .fill("Billing should reach technical — deliberate failure");

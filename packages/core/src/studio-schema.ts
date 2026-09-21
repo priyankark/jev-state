@@ -21,13 +21,28 @@ export const stateSchema = z.object({
     })
     .optional(),
 });
-export const evalCaseSchema = z.object({
-  id: z.string().min(1).max(100),
-  name: z.string().min(1).max(100),
-  turns: z.array(z.string().trim().min(1).max(2000)).min(1).max(5),
-  expectedState: id,
-  responseIncludes: z.string().max(200),
-});
+export const evalCaseSchema = z
+  .object({
+    id: z.string().min(1).max(100),
+    name: z.string().min(1).max(100),
+    turns: z.array(z.string().trim().min(1).max(2000)).min(1).max(5),
+    expectedState: id,
+    responseIncludes: z.string().max(200),
+    expectedPath: z.array(id.nullable()).min(1).max(5).optional(),
+  })
+  .superRefine((test, ctx) => {
+    if (test.expectedPath && test.expectedPath.length !== test.turns.length)
+      ctx.addIssue({
+        code: "custom",
+        message: "Choose one expected state (or any state) for each turn.",
+      });
+    const last = test.expectedPath?.at(-1);
+    if (last && last !== test.expectedState)
+      ctx.addIssue({
+        code: "custom",
+        message: "The final path state must match the expected final state.",
+      });
+  });
 export const projectSchema = z
   .object({
     id: z.string().min(1).max(100),
@@ -61,7 +76,10 @@ export const projectSchema = z
         message: "Evaluation case IDs must be unique",
       });
     for (const c of p.cases)
-      if (!ids.has(c.expectedState))
+      if (
+        !ids.has(c.expectedState) ||
+        c.expectedPath?.some((state) => state !== null && !ids.has(state))
+      )
         ctx.addIssue({
           code: "custom",
           message: "An evaluation expects a state that no longer exists",
@@ -178,6 +196,9 @@ export interface CaseResult {
   actual: string;
   passed: boolean;
   responsePassed: boolean;
+  pathPassed?: boolean;
+  expectedPath?: (string | null)[];
+  failureReasons?: string[];
   elapsedMs: number;
   inputTokens: number;
   outputTokens: number;

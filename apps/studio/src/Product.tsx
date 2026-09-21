@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { ProjectGraph, layoutStates } from "./ProjectGraph.js";
+import { DecisionTrace } from "./DecisionTrace.js";
+import {
+  compareReports,
+  changeLabels,
+} from "../../../packages/core/src/regressions.js";
 import { GetCode } from "./GetCode.js";
 import { evaluationEvidence } from "../../../packages/core/src/handoff.js";
 import { ConnectionSetup } from "./ConnectionSetup.js";
@@ -208,6 +213,7 @@ export function Product() {
   );
   const reports = library.reports.filter((r) => r.projectId === projectId);
   const report = reports.find((r) => r.id === reportId) ?? reports[0];
+  const comparison = report ? compareReports(report, reports) : null;
   const reportStale = !!(
     project &&
     report &&
@@ -588,6 +594,17 @@ export function Product() {
   }
   function deleteState() {
     if (!working || !selected || selected.id === working.initial) return;
+    const affected = working.cases.filter(
+      (c) =>
+        c.expectedState === selected.id ||
+        c.expectedPath?.includes(selected.id),
+    );
+    if (affected.length) {
+      setError(
+        `This state is expected by ${affected.length} regression ${affected.length === 1 ? "case" : "cases"}. Update or remove those cases in Test before deleting it.`,
+      );
+      return;
+    }
     updateDraft({
       states: working.states
         .filter((s) => s.id !== selected.id)
@@ -688,13 +705,20 @@ export function Product() {
     setText("");
     setError("");
   }
+  function updateCaseTurns(turns: string[]) {
+    setCaseEditor((previous) => {
+      if (!previous) return previous;
+      const { expectedPath: _discarded, ...rest } = previous;
+      return { ...rest, turns };
+    });
+  }
   function saveCase() {
     if (!project || !caseEditor) return;
     if (
       caseEditor.turns.length > 5 ||
       caseEditor.turns.some((turn) => !turn.trim())
     ) {
-      setError("Add 1–5 messages, one per line, with no empty lines.");
+      setError("Add 1–5 non-empty user messages.");
       return;
     }
     const updated = {
@@ -2657,6 +2681,37 @@ export function Product() {
                     </small>
                   </div>
                 )}
+                {comparison?.previous && (
+                  <div
+                    className="p-regression-comparison"
+                    aria-label="Changes since previous run"
+                  >
+                    <div>
+                      <strong>
+                        {comparison.regressed} regressed · {comparison.fixed}{" "}
+                        fixed
+                      </strong>
+                      <p>
+                        Compared with the previous{" "}
+                        {report!.mode === "mock" ? "simulation" : "live"} run,
+                        workflow v{comparison.previous.projectVersion}.{" "}
+                        {comparison.comparable} cases have unchanged messages
+                        and expectations.
+                      </p>
+                    </div>
+                    <button
+                      className="p-text-button"
+                      onClick={() => setReportId(comparison.previous!.id)}
+                    >
+                      View previous run <ArrowRight size={14} />
+                    </button>
+                    <small>
+                      Edited expectations are marked “Test changed”; they cannot
+                      count as a fix. Provider errors and incomplete cases are
+                      not compared.
+                    </small>
+                  </div>
+                )}
                 <div className="p-eval-stats">
                   <div>
                     <span>PASS RATE</span>
@@ -2814,6 +2869,13 @@ export function Product() {
                               ) : (
                                 <span className="p-not-run">Not run</span>
                               )}
+                              {comparison?.changes[test.id] && (
+                                <small
+                                  className={`p-case-change ${comparison.changes[test.id]}`}
+                                >
+                                  {changeLabels[comparison.changes[test.id]!]}
+                                </small>
+                              )}
                             </td>
                             <td>
                               <button
@@ -2898,10 +2960,10 @@ export function Product() {
                   </div>
                 )}
                 <p className="p-eval-note">
-                  Checks use exact final-state matches and optional reply text.
-                  These are deterministic evals, not model-graded quality
-                  scores. Simulation tests your workflow wiring; use Live Jev to
-                  measure model behavior.
+                  Checks use the expected final state, optional per-turn states,
+                  and optional reply text. These are deterministic evals, not
+                  model-graded quality scores. Simulation tests your workflow
+                  wiring; use Live Jev to measure model behavior.
                 </p>
               </div>
             )}
@@ -3036,25 +3098,59 @@ export function Product() {
                 required
               />
             </label>
-            <label>
-              User messages, one turn per line
-              <textarea
-                rows={5}
-                value={caseEditor.turns.join("\n")}
-                onChange={(e) =>
-                  setCaseEditor({
-                    ...caseEditor,
-                    turns: e.target.value.split("\n"),
-                  })
-                }
-                placeholder={"I was charged twice.\nThat is fixed now."}
-                required
-              />
-            </label>
-            <p className="p-field-hint">
-              Up to 5 turns. The agent’s reply is added between each message,
-              just like a real conversation.
-            </p>
+            <div className="p-case-turns">
+              {caseEditor.turns.map((message, index) => (
+                <div className="p-case-turn" key={index}>
+                  <label>
+                    User message {index + 1}
+                    <textarea
+                      rows={3}
+                      maxLength={2000}
+                      value={message}
+                      onChange={(e) =>
+                        updateCaseTurns(
+                          caseEditor.turns.map((turn, i) =>
+                            i === index ? e.target.value : turn,
+                          ),
+                        )
+                      }
+                      placeholder={
+                        index === 0
+                          ? "I was charged twice."
+                          : "It is fixed now."
+                      }
+                    />
+                  </label>
+                  {caseEditor.turns.length > 1 && (
+                    <button
+                      type="button"
+                      className="p-text-button"
+                      aria-label={`Remove user turn ${index + 1}`}
+                      onClick={() =>
+                        updateCaseTurns(
+                          caseEditor.turns.filter((_, i) => i !== index),
+                        )
+                      }
+                    >
+                      Remove turn
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                className="p-button"
+                disabled={caseEditor.turns.length >= 5}
+                onClick={() => updateCaseTurns([...caseEditor.turns, ""])}
+              >
+                Add user turn
+              </button>
+              <p className="p-field-hint">
+                Each box is one user turn, including any line breaks. Add up to
+                5 turns; the agent replies between them, just like a
+                conversation.
+              </p>
+            </div>
             <p className="p-field-hint">
               Choose the state you wanted to reach, even if the conversation
               went somewhere else. This is your expected behavior for future
@@ -3068,6 +3164,16 @@ export function Product() {
                   setCaseEditor({
                     ...caseEditor,
                     expectedState: e.target.value,
+                    ...(caseEditor.expectedPath
+                      ? {
+                          expectedPath: caseEditor.expectedPath.map(
+                            (state, index) =>
+                              index === caseEditor.turns.length - 1
+                                ? e.target.value
+                                : state,
+                          ),
+                        }
+                      : {}),
                   })
                 }
               >
@@ -3078,6 +3184,66 @@ export function Product() {
                 ))}
               </select>
             </label>
+            {caseEditor.turns.length > 1 && (
+              <div className="p-path-editor">
+                <label className="p-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={!!caseEditor.expectedPath}
+                    onChange={(e) => {
+                      if (e.target.checked)
+                        setCaseEditor({
+                          ...caseEditor,
+                          expectedPath: caseEditor.turns.map((_, index) =>
+                            index === caseEditor.turns.length - 1
+                              ? caseEditor.expectedState
+                              : null,
+                          ),
+                        });
+                      else {
+                        const { expectedPath: _discarded, ...rest } =
+                          caseEditor;
+                        setCaseEditor(rest);
+                      }
+                    }}
+                  />{" "}
+                  Check intermediate states
+                </label>
+                <p className="p-field-hint">
+                  Catch a wrong step even when the final state is correct.
+                  Editing the messages clears these checks so you can confirm
+                  them again.
+                </p>
+                {caseEditor.expectedPath &&
+                  caseEditor.turns.slice(0, -1).map((message, index) => (
+                    <label key={index}>
+                      Expected state after turn {index + 1}
+                      <small>{message || "Enter a user message above"}</small>
+                      <select
+                        value={caseEditor.expectedPath![index] ?? ""}
+                        onChange={(e) =>
+                          setCaseEditor({
+                            ...caseEditor,
+                            expectedPath: caseEditor.expectedPath!.map(
+                              (state, i) =>
+                                i === index ? e.target.value || null : state,
+                            ),
+                          })
+                        }
+                      >
+                        <option value="">
+                          Any state — do not check this turn
+                        </option>
+                        {project.states.map((state) => (
+                          <option key={state.id} value={state.id}>
+                            {state.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+              </div>
+            )}
             <label>
               Final reply should contain <span>(optional)</span>
               <input
@@ -3126,10 +3292,14 @@ export function Product() {
                 <button
                   className="p-button p-primary"
                   onClick={() => {
-                    const stateId = project.states.some(
-                      (s) => s.id === detail.expected,
-                    )
-                      ? detail.expected
+                    const mismatch = detail.expectedPath?.find(
+                      (expected, index) =>
+                        expected !== null &&
+                        detail.turns[index]?.to !== expected,
+                    );
+                    const target = mismatch ?? detail.expected;
+                    const stateId = project.states.some((s) => s.id === target)
+                      ? target
                       : project.initial;
                     setDetail(null);
                     setTab("build");
@@ -3153,15 +3323,7 @@ export function Product() {
               </div>
             )}
 
-            {detail.turns.map((t, i) => (
-              <div className="p-result-turn" key={t.id}>
-                <strong>
-                  Turn {i + 1} · {t.from} → {t.to}
-                </strong>
-                <p>{t.reply}</p>
-                <small>{t.reason}</small>
-              </div>
-            ))}
+            <DecisionTrace result={detail} />
             <details>
               <summary>Full result</summary>
               <pre>{JSON.stringify(detail, null, 2)}</pre>

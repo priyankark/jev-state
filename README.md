@@ -59,6 +59,7 @@ The product follows **Define → Try → Test → Get code**. Each step explains
 **Get code → Download runnable project** gives you a ZIP containing:
 
 - `workflow.json`: your states, allowed transitions, confidence threshold, agent settings, and regression cases.
+- `.github/workflows/check.yml`: runs typechecking and simulation regressions on GitHub pushes and pull requests, with no provider secrets.
 - `workflow.ts` and `lib/`: a server-side integration API and the same execution engine used in the studio.
 - `example.ts`: a copyable multi-turn integration example.
 - `evaluate.ts`: a regression runner with meaningful exit codes for CI.
@@ -145,9 +146,11 @@ An end state finishes the conversation after its reply. The studio never issues 
 
 ## Evaluations in the studio and CI
 
-A case contains one to five user messages, an expected final state, and an optional case-insensitive substring that must appear in the final reply. The runtime inserts each assistant response into the history before the next user message. Each case starts from the initial state with fresh history.
+A case contains one to five user messages, an expected final state, optional expected states after intermediate turns, and an optional case-insensitive substring that must appear in the final reply. The runtime inserts each assistant response into the history before the next user message. Each case starts from the initial state with fresh history.
 
-The studio shows pass rate, latency, usage, result details, and the states/transitions exercised. Editing workflow behavior or cases marks old reports as stale. Moving nodes does not change the workflow version or invalidate active conversations.
+Each message has its own editor, so multiline text stays within one user turn. Enable **Check intermediate states** to catch a wrong route even when the final state is correct. In JSON, `expectedPath: ["billing", "resolved"]` checks both turns; `null` skips a particular turn. If provided, the path must have one entry per user message and its final entry, when non-null must agree with `expectedState`.
+
+The studio shows pass rate, latency, usage, readable user/assistant traces, decision criteria, and the states/transitions exercised. Reruns compare unchanged cases with the preceding run in the same mode and highlight regressions and fixes. Changed expectations are labeled **Test changed**; service errors and incomplete results are excluded from behavior comparisons. Editing workflow behavior or cases marks old reports as stale. Moving nodes does not change the workflow version or invalidate active conversations.
 
 Run the same evaluation engine without a browser:
 
@@ -173,7 +176,7 @@ CI can run a simulation suite with no secrets:
 
 ![Evaluation cases, pass rate, and state and transition coverage](docs/assets/studio-evaluations.png)
 
-**Path coverage is not accuracy.** A passing small example suite does not establish performance on your domain. Add ambiguous, adversarial, no-match, recovery, and multi-turn cases. A case that sends another message after reaching an end state is an execution error rather than a silent pass.
+**Path coverage is not accuracy.** A passing small example suite does not establish performance on your domain. Add ambiguous, adversarial, no-match, recovery, and multi-turn cases. A case that reaches an end state before consuming all its messages fails its expectations (exit 1), with the completed trace retained and the missing turns explained.
 
 ## Using the runtime from TypeScript
 

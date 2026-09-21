@@ -178,6 +178,10 @@ export async function evaluateCase(
   const messages: ChatMessage[] = [];
   let current = project.initial;
   for (const text of test.turns) {
+    signal.throwIfAborted();
+    // Ending before all test messages are consumed is an assertion failure.
+    // Retain completed turns, their trace, and usage so the failure is debuggable.
+    if (project.states.find((state) => state.id === current)?.terminal) break;
     messages.push({ role: "user", content: text });
     const turn = await executeTurn(
       { project, currentState: current, messages: [...messages], mode },
@@ -190,17 +194,45 @@ export async function evaluateCase(
   }
   const responsePassed =
     !test.responseIncludes ||
-    turns
-      .at(-1)!
-      .reply.toLowerCase()
-      .includes(test.responseIncludes.toLowerCase());
+    (turns
+      .at(-1)
+      ?.reply.toLowerCase()
+      .includes(test.responseIncludes.toLowerCase()) ??
+      false);
+  const pathPassed =
+    !test.expectedPath ||
+    test.expectedPath.every(
+      (expected, index) => expected === null || turns[index]?.to === expected,
+    );
+  const failureReasons: string[] = [];
+  if (turns.length < test.turns.length)
+    failureReasons.push(
+      `The conversation ended in ${current} after ${turns.length} turns, before all ${test.turns.length} test messages were consumed.`,
+    );
+  if (current !== test.expectedState)
+    failureReasons.push(
+      `Expected final state ${test.expectedState}; reached ${current}.`,
+    );
+  if (!responsePassed)
+    failureReasons.push(
+      `The final reply did not contain ${JSON.stringify(test.responseIncludes)}.`,
+    );
+  test.expectedPath?.forEach((expected, index) => {
+    if (expected !== null && turns[index]?.to !== expected)
+      failureReasons.push(
+        `Turn ${index + 1}: expected ${expected}; ${turns[index] ? `reached ${turns[index]!.to}` : "did not run"}.`,
+      );
+  });
   return {
     caseId: test.id,
     name: test.name,
     expected: test.expectedState,
     actual: current,
-    passed: current === test.expectedState && responsePassed,
+    passed: failureReasons.length === 0,
     responsePassed,
+    pathPassed,
+    ...(test.expectedPath ? { expectedPath: test.expectedPath } : {}),
+    failureReasons,
     elapsedMs: Math.round(performance.now() - started),
     inputTokens: turns.reduce((s, t) => s + t.inputTokens, 0),
     outputTokens: turns.reduce((s, t) => s + t.outputTokens, 0),

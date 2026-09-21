@@ -178,11 +178,9 @@ export function createStudioApi(
   });
   router.post("/connections/key", async (req, res) => {
     if (!byok) {
-      res
-        .status(403)
-        .json({
-          error: "Personal connections are not enabled on this installation.",
-        });
+      res.status(403).json({
+        error: "Personal connections are not enabled on this installation.",
+      });
       return;
     }
     const parsed = z
@@ -195,11 +193,9 @@ export function createStudioApi(
       .safeParse(req.body);
     delete req.body?.key;
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          error: "Enter a valid API key and accept the connection notice.",
-        });
+      res.status(400).json({
+        error: "Enter a valid API key and accept the connection notice.",
+      });
       return;
     }
     const controller = new AbortController();
@@ -222,14 +218,12 @@ export function createStudioApi(
       if (!res.destroyed) res.json({ ok: true });
     } catch (error) {
       if (!res.destroyed)
-        res
-          .status(error instanceof ConnectionError ? error.status : 502)
-          .json({
-            error:
-              error instanceof ConnectionError
-                ? error.message
-                : "Could not verify this key. Check its provider, permissions, and account access, then try again.",
-          });
+        res.status(error instanceof ConnectionError ? error.status : 502).json({
+          error:
+            error instanceof ConnectionError
+              ? error.message
+              : "Could not verify this key. Check its provider, permissions, and account access, then try again.",
+        });
     } finally {
       parsed.data.key = "";
     }
@@ -308,6 +302,11 @@ export function createStudioApi(
     if (
       !parsed.data.project.states.some(
         (state) => state.id === parsed.data.test.expectedState,
+      ) ||
+      parsed.data.test.expectedPath?.some(
+        (expected) =>
+          expected !== null &&
+          !parsed.data.project.states.some((state) => state.id === expected),
       )
     ) {
       res

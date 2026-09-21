@@ -43,3 +43,9 @@ The primary job is now explicit: reproduce a conversational decision, fix its cr
 Conversations up to five user turns can become regression cases without retyping. The expected state is editable so failures do not become accepted behavior accidentally. Failed results link to state criteria and test expectations. The code page shows simulation and live evidence separately and marks changes, partial runs, missing cases, and failures honestly.
 
 The handoff is a standalone TypeScript ZIP with a copyable integration example, exact shared runtime, workflow/test JSON, regression CLI, and setup instructions. Keys and conversation history are excluded; saved case messages are included. Unit and browser tests verify that the download compiles and runs outside this repo, preserves behavior, supports clipboard copying, and fits mobile screens.
+
+## Conversation regression review
+
+A second browser review found that final-state checks could hide a wrong intermediate decision, result dialogs buried user input in raw JSON, and deleting a referenced state silently removed its tests. Cases now support optional per-turn state checks, readable decision traces with exact recorded criteria, and a deletion guard requiring explicit test edits first. Early terminal exits preserve partial traces and fail clearly.
+
+The test editor uses one multiline message box per user turn, with explicit add/remove controls. Mobile test cases stack vertically so results remain visible without horizontal scrolling. Comparisons distinguish behavioral regressions and fixes from changed expectations, provider errors, and incomplete runs. `tests/regressions.test.ts` covers comparison semantics and runtime assertions; `tests/e2e/regressions.spec.ts` exercises the edit → fail → inspect → fix loop, persistence, multiline messages, and mobile layout. Export tests execute intermediate assertions outside the repository. Downloads include simulation-only GitHub Actions checks.

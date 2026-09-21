@@ -40,11 +40,16 @@ An end state disables further messages. Start a new conversation to try another 
 Under your conversation, choose **Save as regression test**. The user messages are already filled in. Confirm the expected state, even if the conversation reached the wrong one. Save to open **Test**. You can also choose **Add case** and enter:
 
 - Name: `Duplicate charge resolved`
-- User messages, one per line: `I was charged twice` then `It is fixed now`
+- User message 1: `I was charged twice`
+- Choose **Add user turn**, then User message 2: `It is fixed now`
 - Expected final state: `Resolved`
 - Optional final reply substring: a phrase from the Resolved reply
 
+Each message box represents one turn; line breaks remain part of that message. Enable **Check intermediate states** and expect Billing help after turn 1 to protect the route as well as the ending. Editing messages clears intermediate checks so you can confirm them against the new conversation.
+
 Run the suite and inspect the result. To see a real failure, duplicate the scenario with Technical help as the expected state. The report will show the actual final state and its turns. Use **Review state criteria** to inspect the intended destination, or **Edit expectation** if the test is wrong. Remove or correct that deliberately failing case when done.
+
+After editing workflow behavior, rerun the same cases: the comparison highlights which regressed or were fixed. It compares only unchanged cases in the same mode; changing an expectation is labeled **Test changed**, not a fix. Open a result to read each user message, assistant reply, expected and actual state, and recorded decision criteria.
 
 Every case runs independently from the initial state. Do not add user turns after a case reaches an end state. Coverage shows which paths ran; add cases for the paths still missing. Add no-match and ambiguous inputs as well as happy paths.
 
