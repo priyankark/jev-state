@@ -87,6 +87,16 @@ test("a conversation becomes a regression, a failure leads to criteria, and code
   ).toBe("stale");
   expect(strFromU8(files[".env.example"]!)).toContain("TYPESAFE_API_KEY=\n");
   expect(files["lib/conversation.ts"]).toBeDefined();
+  await page.getByRole("button", { name: "Copy agent prompt" }).click();
+  const prompt = await page.evaluate(() => navigator.clipboard.readText());
+  const skillPath = ".agents/skills/integrate-jev-workflow/SKILL.md";
+  expect(prompt).toContain(skillPath);
+  await page.getByRole("button", { name: "Preview integration skill" }).click();
+  await expect(page.getByLabel("Preview exported file")).toHaveValue(skillPath);
+  const skill = strFromU8(files[skillPath]!);
+  await expect(page.getByLabel(`Source of ${skillPath}`)).toHaveText(skill);
+  await page.getByRole("button", { name: "Copy file", exact: true }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(skill);
   await page.screenshot({ path: ".local/handoff-desktop.png", fullPage: true });
 });
 
@@ -115,6 +125,10 @@ test("code handoff is reachable on mobile and distinguishes passing simulation f
   await expect(page.getByLabel("Source of workflow.json")).toContainText(
     '"expectedState"',
   );
+  await page.getByRole("button", { name: "Preview integration skill" }).click();
+  await expect(
+    page.getByRole("button", { name: "Copy agent prompt" }),
+  ).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

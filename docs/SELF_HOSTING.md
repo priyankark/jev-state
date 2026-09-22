@@ -45,7 +45,7 @@ Without an access token, hosted endpoints cannot use operator environment keys, 
 
 With `STUDIO_BYOK=1`, visitors connect a Jev or optional OpenAI key in **Connections**. The browser keeps verified keys only in tab memory and sends them to the same-origin API for connection checks and live requests. Reload, tab close, or **Disconnect and forget keys** clears them. The server creates request-scoped SDK clients and does not retain credentials, issue a key cookie, or store them in a database. Disconnect aborts active browser work; already accepted provider requests may still incur usage.
 
-Supplying any personal key selects only that visitor's keys: a missing provider never falls back to an operator key. Simulation stays the default and sends no personal keys. The provider bills the key owner for live usage. Connecting verifies model-list access without generating a reply. Visitors must trust the operator handling these requests; self-hosting is available for full control.
+Supplying any personal key selects only that visitor's keys: a missing provider never falls back to an operator key. Live Jev is selected by default; users send a message or run cases to start inference. Optional simulation sends no personal keys. Explicit simulation-only installations remain in simulation. The provider bills the key owner for live usage. Connecting verifies model-list access without generating a reply. Visitors must trust the operator handling these requests; self-hosting is available for full control.
 
 No Upstash, database, payment service, or new infrastructure subscription is required. Your hosting provider's ordinary usage limits and billing still apply. The API applies best-effort **per-instance** limits of 15 verifications and 60 live requests per minute per IP; these are not a global quota or billing cap. Vercel's overwritten `x-vercel-forwarded-for` is trusted on Vercel; elsewhere the socket IP is used. A reverse proxy may therefore share a limit across visitors. Configure proxy/observability services to redact request bodies and `X-Jev-Jev-Key` / `X-Jev-Openai-Key` headers. Provider SDK logging is disabled in Studio.
 
@@ -89,7 +89,7 @@ The Dockerfile excludes local environment files and runs the app as the unprivil
 - **Port already in use:** run `PORT=5175 npm run dev` and visit that port. Playwright uses 5174.
 - **Personal connection disappears after reload:** expected; reconnect your key. Keys are deliberately not persisted.
 - **Connection shows unconfigured:** connect a personal key when BYOK is enabled, or check the server environment, restart/redeploy, and refresh Connections. Keys added only to your shell are not automatically added to Vercel.
-- **Hosted live button disabled:** confirm demo mode is off, then connect your own key with BYOK enabled or configure a server key plus access token.
+- **Live mode unavailable or asks for a connection:** confirm demo mode is off, then connect your own key with BYOK enabled or configure a server key plus access token.
 - **403 origin/host error:** use localhost for the default setup, or configure the exact public `STUDIO_ORIGIN` and preserve its Host header at your proxy.
 - **Provider error:** check account access, the configured model, and provider usage limits. Error messages intentionally omit raw SDK responses and keys.
 - **Storage full:** download a backup, remove unneeded projects/history, or use another browser profile. Do not clear site data before exporting what you need.

@@ -183,7 +183,7 @@ export function Product() {
   const [inspectedState, setInspectedState] = useState<string | null>(null);
   const [draft, setDraft] = useState<Project | null>(null),
     [selectedState, setSelectedState] = useState(""),
-    [mode, setMode] = useState<"mock" | "live">("mock");
+    [mode, setMode] = useState<"mock" | "live">("live");
   const [conversationId, setConversationId] = useState<string | null>(null),
     [text, setText] = useState(""),
     [busy, setBusy] = useState(false),
@@ -222,6 +222,20 @@ export function Product() {
   const viewedTurn =
     conversation?.turns[inspectedTurn ?? conversation.turns.length - 1];
   const working = draft ?? project;
+  function missingProvider(
+    runProject: Project | null,
+    runMode: "mock" | "live",
+  ) {
+    if (runMode !== "live") return null;
+    if (!connections.jev) return "jev";
+    if (runProject?.agent.enabled && !connections.openai) return "openai";
+    return null;
+  }
+  const chatProvider = missingProvider(
+    conversationProject,
+    conversation?.mode ?? mode,
+  );
+  const evalProvider = missingProvider(project, mode);
   const diagnostics = working ? diagnoseProject(working) : [];
   const dirty = !!(
     draft &&
@@ -277,6 +291,8 @@ export function Product() {
   async function refreshConnections() {
     try {
       const available = await request<ConnectionState>("/connections");
+      // Explicit simulation-only installations cannot offer live inference.
+      if (available.liveEnabled === false) setMode("mock");
       const own = personalKeyStatus();
       setConnections(
         own.jev || own.openai
@@ -297,7 +313,7 @@ export function Product() {
   function disconnectProviders() {
     cancelWork();
     forgetKeys();
-    setMode("mock");
+    setMode("live");
     setConversationId(null);
     setInspectedTurn(null);
     setConnections((previous) => ({
@@ -618,6 +634,10 @@ export function Product() {
   }
   async function send() {
     if (!project || !text.trim() || busy) return;
+    if (chatProvider) {
+      setSetupProvider(chatProvider);
+      return;
+    }
     if (conversation && conversation.projectVersion !== project.version) {
       setError(
         "This workflow changed. Start a new conversation to use the current version.",
@@ -745,6 +765,10 @@ export function Product() {
   }
   async function runEvals() {
     if (!project || !project.cases.length) return;
+    if (evalProvider) {
+      setSetupProvider(evalProvider);
+      return;
+    }
     const runProject = structuredClone(project);
     const abort = new AbortController();
     controller.current = abort;
@@ -1092,7 +1116,11 @@ export function Product() {
           <div>
             <span className="p-status">
               <i className="p-dot" />
-              {connections.jev ? "Jev configured" : "Simulation ready"}
+              {connections.jev
+                ? "Live Jev ready"
+                : connections.liveEnabled === false
+                  ? "Simulation only"
+                  : "Connect Jev to get started"}
             </span>
             <span className="p-avatar">P</span>
           </div>
@@ -1193,9 +1221,9 @@ export function Product() {
                 <div>
                   <strong>Your keys. Your usage. No subscription.</strong>
                   <p>
-                    Try simulation for free, or connect your provider account
-                    for live runs. Keys are kept only in this tab’s memory and
-                    cleared on reload.
+                    Connect Jev to run real decisions and evaluations. Keys are
+                    kept only in this tab’s memory and cleared on reload.
+                    Simulation is available as an optional wiring check.
                   </p>
                 </div>
                 {(connections.sources?.jev === "personal" ||
@@ -1365,6 +1393,27 @@ export function Product() {
                 </button>
               </div>
             </div>
+            {connections.liveEnabled !== false && !connections.jev && (
+              <div
+                className="p-connection-intro"
+                aria-label="Get started with live Jev"
+              >
+                <div>
+                  <strong>Put Jev to work on your workflow.</strong>
+                  <p>
+                    Connect your TypeSafe account, choose an example, and try
+                    real decisions. Live usage is billed by your provider.
+                    Simulation is optional and needs no key.
+                  </p>
+                </div>
+                <button
+                  className="p-button p-primary"
+                  onClick={() => setSetupProvider("jev")}
+                >
+                  <Zap size={16} /> Connect Jev
+                </button>
+              </div>
+            )}
             {library.projects.length ? (
               <div className="p-project-grid">
                 {library.projects.map((p) => (
@@ -1420,8 +1469,8 @@ export function Product() {
                     Define your agent’s behavior <ArrowRight size={16} />
                   </button>
                   <span className="p-welcome-note">
-                    Start with free simulation. Connect Jev when you want to
-                    test real decisions.
+                    Try natural-language decisions with live Jev. Use optional
+                    simulation to check the wiring without a key.
                   </span>
                 </div>
                 <div className="p-hero-flow">
@@ -1616,7 +1665,7 @@ export function Product() {
                       : tab === "conversation"
                         ? "Click a reply’s state badge to inspect it. Save the conversation as a test with the outcome you wanted."
                         : tab === "evals"
-                          ? "Run your cases, inspect failures, and fix the criteria. Simulation checks wiring; Live Jev checks model behavior."
+                          ? "Run your cases with live Jev, inspect failures, and fix the criteria. Optional simulation checks the wiring."
                           : "A runnable TypeScript project, a copyable integration example, and honest validation status."}
                   </p>
                 </div>
@@ -2135,39 +2184,57 @@ export function Product() {
                   <div className="p-chat-options">
                     <div className="p-mode">
                       <button
-                        disabled={busy || !!conversation}
-                        className={mode === "mock" ? "active" : ""}
-                        onClick={() => setMode("mock")}
-                      >
-                        Simulation
-                      </button>
-                      <button
-                        disabled={busy || !!conversation || !connections.jev}
-                        className={mode === "live" ? "active" : ""}
+                        disabled={
+                          busy ||
+                          !!conversation ||
+                          connections.liveEnabled === false
+                        }
+                        className={
+                          (conversation?.mode ?? mode) === "live"
+                            ? "active"
+                            : ""
+                        }
+                        aria-pressed={(conversation?.mode ?? mode) === "live"}
                         onClick={() => setMode("live")}
                       >
                         <i />
                         Live Jev
+                      </button>
+                      <button
+                        disabled={busy || !!conversation}
+                        className={
+                          (conversation?.mode ?? mode) === "mock"
+                            ? "active"
+                            : ""
+                        }
+                        aria-pressed={(conversation?.mode ?? mode) === "mock"}
+                        onClick={() => setMode("mock")}
+                        title="Optional keyword simulation. No provider usage."
+                      >
+                        Simulation
                       </button>
                     </div>
                     <span>
                       {(conversation?.mode ?? mode) === "mock"
                         ? "No API calls · synthetic behavior"
                         : project.agent.enabled
-                          ? "Jev decisions + OpenAI replies"
-                          : "Jev decisions + written replies"}
+                          ? "Live · Jev + OpenAI · provider usage"
+                          : "Live · Jev decisions · provider usage"}
                     </span>
                   </div>
-                  {connections.byok && !connections.jev && (
+                  {chatProvider && (
                     <div className="p-connect-prompt">
                       <span>
-                        Ready to try real decisions? Use your own Jev key.
+                        {chatProvider === "jev"
+                          ? "Connect Jev to try real decisions. Your key stays in this tab when using a personal connection."
+                          : "This workflow generates replies. Connect OpenAI to continue."}
                       </span>
                       <button
-                        className="p-text-button"
-                        onClick={() => setSetupProvider("jev")}
+                        className="p-button p-primary"
+                        onClick={() => setSetupProvider(chatProvider)}
                       >
-                        Connect Jev <ArrowUpRight size={14} />
+                        Connect {chatProvider === "jev" ? "Jev" : "OpenAI"}{" "}
+                        <ArrowUpRight size={14} />
                       </button>
                     </div>
                   )}
@@ -2380,6 +2447,7 @@ export function Product() {
                             className="p-send"
                             disabled={
                               !text.trim() ||
+                              !!chatProvider ||
                               !!(
                                 conversation &&
                                 conversation.messages.length >= 40
@@ -2580,10 +2648,10 @@ export function Product() {
                   aria-label="Current workflow checks"
                 >
                   <span>
-                    {evaluationEvidence(project, reports, "mock").label}
+                    {evaluationEvidence(project, reports, "live").label}
                   </span>
                   <span>
-                    {evaluationEvidence(project, reports, "live").label}
+                    {evaluationEvidence(project, reports, "mock").label}
                   </span>
                 </div>
                 <div className="p-eval-heading">
@@ -2597,18 +2665,21 @@ export function Product() {
                   <div className="p-actions">
                     <div className="p-mode">
                       <button
-                        disabled={evalBusy}
-                        className={mode === "mock" ? "active" : ""}
-                        onClick={() => setMode("mock")}
-                      >
-                        Simulation
-                      </button>
-                      <button
-                        disabled={evalBusy || !connections.jev}
+                        disabled={evalBusy || connections.liveEnabled === false}
                         className={mode === "live" ? "active" : ""}
+                        aria-pressed={mode === "live"}
                         onClick={() => setMode("live")}
                       >
                         Live Jev
+                      </button>
+                      <button
+                        disabled={evalBusy}
+                        className={mode === "mock" ? "active" : ""}
+                        aria-pressed={mode === "mock"}
+                        onClick={() => setMode("mock")}
+                        title="Optional keyword simulation. No provider usage."
+                      >
+                        Simulation
                       </button>
                     </div>
                     {evalBusy ? (
@@ -2619,7 +2690,7 @@ export function Product() {
                     ) : (
                       <button
                         className="p-button p-primary"
-                        disabled={!project.cases.length}
+                        disabled={!project.cases.length || !!evalProvider}
                         onClick={() => void runEvals()}
                       >
                         <Play size={14} />
@@ -2628,16 +2699,19 @@ export function Product() {
                     )}
                   </div>
                 </div>
-                {connections.byok && !connections.jev && (
+                {evalProvider && (
                   <div className="p-connect-prompt">
                     <span>
-                      Ready to try real decisions? Use your own Jev key.
+                      {evalProvider === "jev"
+                        ? "Connect Jev to evaluate real model decisions. Simulation is an optional wiring check."
+                        : "Connect OpenAI to evaluate this workflow's generated replies."}
                     </span>
                     <button
-                      className="p-text-button"
-                      onClick={() => setSetupProvider("jev")}
+                      className="p-button p-primary"
+                      onClick={() => setSetupProvider(evalProvider)}
                     >
-                      Connect Jev <ArrowUpRight size={14} />
+                      Connect {evalProvider === "jev" ? "Jev" : "OpenAI"}{" "}
+                      <ArrowUpRight size={14} />
                     </button>
                   </div>
                 )}
@@ -3347,7 +3421,7 @@ export function Product() {
             await refreshConnections();
             setSetupProvider(null);
             notify(
-              `${setupProvider === "jev" ? "Jev" : "OpenAI"} connected for this tab. Choose Live Jev when you're ready.`,
+              `${setupProvider === "jev" ? "Jev" : "OpenAI"} connected for this tab. Send a message or run tests when you're ready.`,
             );
           }}
         />

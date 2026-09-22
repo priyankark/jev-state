@@ -44,7 +44,7 @@ Open **[localhost:5173](http://localhost:5173)**.
 
 1. Choose **Use this example** on the support workflow and create your editable copy.
 2. In **Define**, select a state to edit its entry criteria, reply, keywords, and outgoing transitions.
-3. Open **Try**, leave **Simulation** selected, and send `I was charged twice`.
+3. Choose **Connect Jev**, enter your TypeSafe key, and accept the provider-usage notice. Open **Try**, where **Live Jev** is selected, and send `I was charged twice`. To explore without a key, explicitly choose **Simulation** instead.
 4. Send `It is fixed now` to reach the end state.
 5. Choose **Save as regression test** and confirm the outcome you expected. This works for successful and failing conversations.
 6. In **Test**, run the cases and inspect failures. **Review state criteria** takes you straight to the relevant state.
@@ -61,10 +61,13 @@ The product follows **Define → Try → Test → Get code**. Each step explains
 - `workflow.json`: your states, allowed transitions, confidence threshold, agent settings, and regression cases.
 - `.github/workflows/check.yml`: runs typechecking and simulation regressions on GitHub pushes and pull requests, with no provider secrets.
 - `workflow.ts` and `lib/`: a server-side integration API and the same execution engine used in the studio.
+- `.agents/skills/integrate-jev-workflow/SKILL.md`: instructions for a coding agent to integrate the exported workflow into your app, with server setup, session handling, and verification.
 - `example.ts`: a copyable multi-turn integration example.
 - `evaluate.ts`: a regression runner with meaningful exit codes for CI.
 - `package.json`, TypeScript configuration, `.env.example`, README, and license.
 - `validation.json`: separate simulation and live validation status, including stale or incomplete runs.
+
+To integrate with a coding agent, use **Copy agent prompt** in Get code and open the unzipped project alongside your app. The bundled skill reads your workflow and validation status and guides the agent through the integration. You can preview the skill before downloading.
 
 Unzip and run these commands inside the downloaded folder, using Node.js 22+:
 
@@ -99,9 +102,9 @@ The generated code calls TypeSafe/OpenAI directly from your server. It does not 
 | Live Jev                     | TypeSafe Choice over allowed destinations plus `stay`                  | State reply text                                       | TypeSafe            |
 | Live Jev + generated replies | Same Jev routing                                                       | OpenAI Responses using the history and resulting state | TypeSafe and OpenAI |
 
-Simulation is deterministic and useful for testing the wiring. Its confidence values are fixtures, **not estimates of model accuracy**. Simulation requests still go to the installation's server; on the public demo, that is the hosted server. The [public studio](https://jev-state.vercel.app) starts in simulation and also supports your own provider keys.
+Simulation is deterministic and useful for testing the wiring. Its confidence values are fixtures, **not estimates of model accuracy**. Simulation requests still go to the installation's server; on the public demo, that is the hosted server. The [public studio](https://jev-state.vercel.app) starts with **Live Jev** selected and prompts you to connect your own provider key. Simulation is optional. Installations explicitly configured as simulation-only demos stay in simulation.
 
-On the hosted studio, open **Connections → Connect Jev**, paste your TypeSafe API key, and accept the provider-usage notice. Verification checks account access without generating a reply. Then explicitly choose **Live Jev** in Try or Test. Add an OpenAI key in Connections only if you want generated replies.
+On the hosted studio, open **Connections → Connect Jev**, paste your TypeSafe API key, and accept the provider-usage notice. Verification checks account access without generating a reply. **Live Jev** is selected by default in Try and Test. Sending a message or running cases starts provider usage; connecting alone does not run inference. Add an OpenAI key in Connections only if you want generated replies.
 
 Personal keys stay in **this tab’s memory**. Reloading, closing the tab, or choosing **Disconnect and forget keys** clears them. They are never saved in localStorage, sessionStorage, cookies, exports, or a server database. Checks and live requests send keys through the same-origin server to the relevant provider; trust that installation's operator or run your own copy. Keys are not sent with simulation requests. Live usage is billed to the connected provider account. No Upstash, hosted key store, or subscription is needed.
 

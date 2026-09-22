@@ -135,9 +135,10 @@ export function ConnectionSetup({
               )}
             </button>
             <p className="p-field-hint">
-              Connecting checks account access without generating a reply.
-              Choose Live Jev explicitly when you want to run models. You’ll
-              need to reconnect after reloading this page.
+              Connecting checks account access without generating a reply. Live
+              Jev is selected by default. Sending a message or running tests
+              starts provider usage. You’ll need to reconnect after reloading
+              this page.
             </p>
           </form>
         ) : (
