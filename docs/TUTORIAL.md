@@ -1,6 +1,6 @@
 # Your first Jev workflow
 
-This walkthrough uses the support example. It runs in simulation without an account. The same project can later use live Jev routing.
+This walkthrough uses the support example with live Jev decisions. Connect a TypeSafe key using **Connect Jev** on the home screen or in Try. The key stays in this tab’s memory, and your provider bills live usage. For a key-free wiring check, explicitly choose the optional **Simulation** mode.
 
 ## 1. Create an editable copy
 
@@ -22,16 +22,16 @@ Click **Save workflow**. Moving states only changes the layout; changing policy,
 
 ## 3. Try a conversation
 
-Open **Try**, select **Simulation**, and send:
+Open **Try**, where **Live Jev** is selected by default. Connect your key if needed, then send:
 
 ```text
 I was charged twice
 It is fixed now
 ```
 
-The first message moves Welcome → Billing help. The second moves Billing help → Resolved. Click a turn to inspect its input, Choice criteria, probability distribution, timing, and the reason the threshold allowed or rejected a transition.
+The expected path is Welcome → Billing help → Resolved. Live decisions can differ; inspect the result instead of assuming the route. Click a turn to inspect its input, Choice criteria, probability distribution, timing, and the reason the threshold allowed or rejected a transition.
 
-Start another conversation and send `Hello`. With no keyword match, simulation stays in Welcome. Its fixed confidence is 60%, below the example's 75% threshold. Simulation probabilities and confidence are fixtures to exercise UI behavior, not live inference measurements.
+For an optional wiring check, start a new conversation, choose **Simulation**, and send `Hello`. With no keyword match, simulation stays in Welcome. Its fixed confidence is 60%, below the example's 75% threshold. Simulation probabilities and confidence are fixtures to exercise UI behavior, not live inference measurements.
 
 An end state disables further messages. Start a new conversation to try another path. Older conversations retain their workflow snapshot; behavior changes require a fresh conversation.
 
@@ -53,9 +53,9 @@ After editing workflow behavior, rerun the same cases: the comparison highlights
 
 Every case runs independently from the initial state. Do not add user turns after a case reaches an end state. Coverage shows which paths ran; add cases for the paths still missing. Add no-match and ambiguous inputs as well as happy paths.
 
-## 5. Switch to live Jev
+## 5. Explore live decisions
 
-On the public studio, choose **Connections → Connect Jev**, enter your own TypeSafe API key, and accept the usage notice. Keys stay in this tab’s memory and pass through the server for provider requests; reload or Disconnect clears them. Live usage is charged to your provider account. For a [local or protected deployment](SELF_HOSTING.md), you can alternatively put `TYPESAFE_API_KEY` in its server environment, restart, and test it in **Connections**. Select **Live Jev** and try paraphrases that do not contain your simulation keywords.
+On the public studio, choose **Connections → Connect Jev**, enter your own TypeSafe API key, and accept the usage notice. Keys stay in this tab’s memory and pass through the server for provider requests; reload or Disconnect clears them. Live usage is charged to your provider account. For a [local or protected deployment](SELF_HOSTING.md), you can alternatively put `TYPESAFE_API_KEY` in its server environment, restart, and test it in **Connections**. Keep **Live Jev** selected (or switch back after a simulation check) and try paraphrases that do not contain your simulation keywords.
 
 Use the inspection panel to understand disagreements. Was the needed destination connected? Were its criteria specific? Was relevant context in the conversation? Did the selected option fail your threshold? Update the workflow or add a regression case based on what you observe.
 

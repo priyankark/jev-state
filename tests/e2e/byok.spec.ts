@@ -1,6 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { unzipSync, strFromU8 } from "fflate";
+import {
+  executeTurn,
+  evaluateCase,
+} from "../../packages/core/src/conversation.js";
 
 const key = "test-personal-jev-key-never-persist";
 async function enablePersonalConnections(page: Page) {
@@ -45,6 +49,114 @@ async function createProject(page: Page) {
   await page.getByRole("button", { name: "Try", exact: true }).click();
 }
 
+test("live Jev is the default from home through conversation and evaluation", async ({
+  page,
+}) => {
+  await enablePersonalConnections(page);
+  let providerRequests = 0;
+  await page.route("**/api/studio/turn", async (route) => {
+    const body = route.request().postDataJSON();
+    expect(body.mode).toBe("live");
+    expect(route.request().headers()["x-jev-jev-key"]).toBe(key);
+    providerRequests++;
+    // Controlled decisions exercise the live UI without spending provider credits.
+    const result = await executeTurn(
+      { ...body, mode: "mock" },
+      {},
+      AbortSignal.timeout(1000),
+    );
+    await route.fulfill({
+      json: { ...result, mode: "live", model: "test-jev" },
+    });
+  });
+  await page.route("**/api/studio/eval-case", async (route) => {
+    const body = route.request().postDataJSON();
+    expect(body.mode).toBe("live");
+    expect(route.request().headers()["x-jev-jev-key"]).toBe(key);
+    providerRequests++;
+    const result = await evaluateCase(
+      body.project,
+      body.test,
+      "mock",
+      {},
+      AbortSignal.timeout(1000),
+    );
+    await route.fulfill({
+      json: {
+        ...result,
+        turns: result.turns.map((turn) => ({
+          ...turn,
+          mode: "live",
+          model: "test-jev",
+        })),
+      },
+    });
+  });
+  await page.goto("/");
+  await expect(page.getByLabel("Get started with live Jev")).toBeVisible();
+  await page.screenshot({ path: ".local/live-home.png", fullPage: true });
+  await connect(page);
+  expect(providerRequests).toBe(0);
+  await createProject(page);
+  await expect(
+    page.getByRole("button", { name: "Live Jev", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page
+    .getByRole("textbox", { name: "Conversation message" })
+    .fill("charged twice");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.locator(".p-current-state")).toContainText("Billing help");
+  expect(providerRequests).toBe(1);
+  await page.getByRole("button", { name: "Test", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Live Jev", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Run 3 cases" }).click();
+  await expect(
+    page.getByRole("button", { name: "Passed", exact: true }),
+  ).toHaveCount(3);
+  await expect(page.getByLabel("Current workflow checks")).toContainText(
+    "3/3 live checks passed",
+  );
+  expect(providerRequests).toBe(4);
+});
+
+test("optional simulation works without connecting and live evaluations wait for a key", async ({
+  page,
+}) => {
+  await enablePersonalConnections(page);
+  await page.goto("/");
+  await createProject(page);
+  await page.getByRole("button", { name: "Test", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Run 3 cases" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Try", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page.getByRole("button", { name: "Connect Jev", exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: ".local/live-connect-mobile.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Simulation", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "Conversation message" })
+    .fill("charged twice");
+  const sent = page.waitForRequest("**/api/studio/turn");
+  await page.getByRole("button", { name: "Send message" }).click();
+  const request = await sent;
+  expect(request.postDataJSON().mode).toBe("mock");
+  expect(request.headers()["x-jev-jev-key"]).toBeUndefined();
+  await expect(page.locator(".p-current-state")).toContainText("Billing help");
+});
+
 test("personal keys are opt-in, never persisted or exported, isolated between tabs, and cleared on reload", async ({
   page,
   context,
@@ -54,14 +166,21 @@ test("personal keys are opt-in, never persisted or exported, isolated between ta
   await createProject(page);
   await expect(
     page.getByRole("button", { name: "Live Jev", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page
+    .getByRole("textbox", { name: "Conversation message" })
+    .fill("hello");
+  await expect(
+    page.getByRole("button", { name: "Send message" }),
   ).toBeDisabled();
   await connect(page);
   await expect(
     page.getByRole("button", { name: "Live Jev", exact: true }),
   ).toBeEnabled();
   await expect(
-    page.getByRole("button", { name: "Simulation", exact: true }),
+    page.getByRole("button", { name: "Live Jev", exact: true }),
   ).toHaveClass("active");
+  await page.getByRole("button", { name: "Simulation", exact: true }).click();
   const input = page.getByRole("textbox", { name: "Conversation message" });
   await input.fill("charged twice");
   const sent = page.waitForRequest("**/api/studio/turn");
@@ -168,10 +287,10 @@ test("Disconnect clears personal headers and mobile connection forms remain usab
   await createProject(page);
   await expect(
     page.getByRole("button", { name: "Live Jev", exact: true }),
-  ).toBeDisabled();
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(
-    page.getByRole("button", { name: "Simulation", exact: true }),
-  ).toHaveClass("active");
+    page.getByRole("button", { name: "Connect Jev", exact: true }),
+  ).toBeVisible();
 });
 
 test("failed verification clears the input and does not save a connection", async ({

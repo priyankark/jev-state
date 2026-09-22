@@ -29,6 +29,7 @@ import {
   executeTurn,
   evaluateCase,
 } from "../packages/core/src/conversation.js";
+import { integrationSkillPath } from "../packages/core/src/integration-skill.js";
 
 async function sources(): Promise<RuntimeSources> {
   const read = (path: string) =>
@@ -48,6 +49,14 @@ test("handoff compiles outside the repo, runs cases, and uses the same decisions
   const { files } = buildHandoff(project, [], await sources());
   const extracted = unzipSync(handoffZip(files));
   assert.deepEqual(JSON.parse(strFromU8(extracted["workflow.json"]!)), project);
+  const skill = strFromU8(extracted[integrationSkillPath]!);
+  // The skill must remain usable from an unzipped export, without this repo.
+  const localLinks = [...skill.matchAll(/\]\((\.\.\/[^)]+)\)/g)];
+  assert.ok(localLinks.length > 0);
+  for (const [, target] of localLinks) {
+    const path = join(dirname(integrationSkillPath), target!);
+    assert.ok(extracted[path], `Missing bundled skill reference: ${path}`);
+  }
   assert.ok(!files["lib/studio.ts"]!.includes("example-support"));
   assert.equal(JSON.parse(files["validation.json"]!).live.status, "not-run");
   const manifest = JSON.parse(files["package.json"]!);

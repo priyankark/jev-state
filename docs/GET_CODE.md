@@ -17,6 +17,7 @@ The intended outcome of Jev State is a decision flow you understand, regression 
 | `workflow.json`                                      | States, criteria, transitions, threshold, agent configuration, and your regression cases             |
 | `workflow.ts`                                        | `startConversation` and `sendMessage` integration functions                                          |
 | `example.ts`                                         | Copyable server-side usage example                                                                   |
+| `.agents/skills/integrate-jev-workflow/SKILL.md`     | Coding-agent instructions for integrating this export with an existing app                           |
 | `.github/workflows/check.yml`                        | GitHub Actions typecheck and simulation regressions on pushes and pull requests; no provider secrets |
 | `evaluate.ts`                                        | Regression runner for local development and CI                                                       |
 | `lib/`                                               | The actual studio execution engine, explicit provider-client construction, and validation schemas    |
@@ -42,6 +43,12 @@ These commands default to simulation and make no model-provider requests. The ex
 Optional per-turn expectations travel with the code in `workflow.json`: for example, `expectedPath: ["billing", "resolved"]` checks both turns, while `null` skips a turn. A wrong intermediate state fails even when the final state and reply match. A conversation ending before all test messages are consumed also fails (exit 1) and keeps its partial trace in the JSON report. These assertions run through the same shared engine as the studio.
 
 For live use, copy `.env.example` to `.env`, set `TYPESAFE_API_KEY`, and add `OPENAI_API_KEY` only if the workflow enables generated replies. Explicitly run `npm run test:live` for model evaluations. Change `startConversation({ mode: "mock" })` to `{ mode: "live" }` in the example for live turns. These requests are billed to your provider account.
+
+## Integrate with a coding agent
+
+Every ZIP includes `.agents/skills/integrate-jev-workflow/SKILL.md`. Open the unzipped project alongside your application and use **Copy agent prompt** on the Get code page, or ask your agent to read that file and integrate the exported workflow. Include the export's folder path when it is outside your app. No global skill installation is required; keep the skill with the export so its relative links still work.
+
+The skill tells the agent to read this workflow and its validation evidence, reuse your app's server and session conventions, preserve routing behavior, and check the result in simulation. It also covers provider setup and separate live verification. It does not contain credentials or grant permission to deploy your app. **Preview integration skill** lets you read and copy the instructions before downloading.
 
 ## Integrate into an existing server
 

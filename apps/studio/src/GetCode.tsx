@@ -12,6 +12,10 @@ import {
   evaluationEvidence,
   handoffZip,
 } from "../../../packages/core/src/handoff.js";
+import {
+  integrationPrompt,
+  integrationSkillPath,
+} from "../../../packages/core/src/integration-skill.js";
 import type { Project, EvalReport } from "../../../packages/core/src/studio.js";
 import conversation from "../../../packages/core/src/conversation.ts?raw";
 import connectors from "../../../packages/core/src/connectors.ts?raw";
@@ -41,6 +45,7 @@ export function GetCode({
   );
   const [selected, setSelected] = useState("example.ts");
   const [copied, setCopied] = useState(false);
+  const [promptCopied, setPromptCopied] = useState(false);
   const [error, setError] = useState("");
   const live = evaluationEvidence(project, reports, "live");
   const simulation = evaluationEvidence(project, reports, "mock");
@@ -51,9 +56,9 @@ export function GetCode({
           <span className="p-kicker">4 · USE IT IN YOUR APP</span>
           <h2>Your decisions. Runnable code.</h2>
           <p>
-            Download a TypeScript project with your workflow and regression
-            tests. Run it locally, then copy the integration example into your
-            server.
+            Download your workflow, regression tests, and an integration skill
+            for your coding agent. Run the TypeScript project locally, then
+            connect it to your app.
           </p>
         </div>
         <button
@@ -86,14 +91,14 @@ export function GetCode({
           </span>
         </div>
         <span
-          className={`p-badge ${simulation.status === "passed" ? "p-green" : ""}`}
-        >
-          {simulation.label}
-        </span>
-        <span
           className={`p-badge ${live.status === "passed" ? "p-green" : ""}`}
         >
           {live.label}
+        </span>
+        <span
+          className={`p-badge ${simulation.status === "passed" ? "p-green" : ""}`}
+        >
+          {simulation.label}
         </span>
         <button className="p-text-button" onClick={onEvaluate}>
           Review tests <ArrowRight size={14} />
@@ -107,21 +112,12 @@ export function GetCode({
       <div className="p-handoff-steps">
         <article>
           <span>1</span>
-          <h3>Run the download</h3>
+          <h3>Run with live Jev</h3>
           <p>
             Unzip it, open a terminal in that folder, and use Node.js 22 or
             newer.
           </p>
-          <pre>
-            npm install{"\n"}npm run typecheck{"\n"}npm test{"\n"}npm start
-          </pre>
-          <small>
-            Simulation is the default. These commands make no provider calls.
-          </small>
-        </article>
-        <article>
-          <span>2</span>
-          <h3>Connect live decisions</h3>
+          <pre>npm install{"\n"}npm run typecheck</pre>
           <p>
             Copy <code>.env.example</code> to <code>.env</code> and add your Jev
             key on your server. Then run <code>npm run test:live</code>.
@@ -138,6 +134,19 @@ export function GetCode({
           </small>
         </article>
         <article>
+          <span>2</span>
+          <h3>Optional: check the wiring</h3>
+          <p>
+            Use keyword simulation to check the exported workflow without
+            provider keys. It does not measure Jev’s decisions.
+          </p>
+          <pre>npm test{"\n"}npm start</pre>
+          <small>
+            The unmodified example and these tests use simulation. Live model
+            checks use <code>npm run test:live</code>.
+          </small>
+        </article>
+        <article>
           <span>3</span>
           <h3>Use it in your app</h3>
           <p>
@@ -149,6 +158,38 @@ export function GetCode({
             Copy the example below. Save the returned session per user and pass
             it into the next turn.
           </p>
+          <p>
+            Working with a coding agent? The download includes a{" "}
+            <code>SKILL.md</code> that guides it through integrating this
+            workflow with your app. Open the unzipped project alongside your app
+            and give your agent this prompt.
+          </p>
+          <button
+            className="p-button"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(integrationPrompt);
+                setPromptCopied(true);
+                setError("");
+              } catch {
+                setError(
+                  "Could not copy the agent prompt. Preview the integration skill and give your agent its path in the downloaded project.",
+                );
+              }
+            }}
+          >
+            {promptCopied ? <Check size={14} /> : <Copy size={14} />}
+            {promptCopied ? "Agent prompt copied" : "Copy agent prompt"}
+          </button>
+          <button
+            className="p-text-button"
+            onClick={() => {
+              setSelected(integrationSkillPath);
+              setCopied(false);
+            }}
+          >
+            Preview integration skill
+          </button>
           <small>You own the code. It makes no requests to Jev State.</small>
         </article>
       </div>
